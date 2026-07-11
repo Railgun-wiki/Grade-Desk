@@ -9,6 +9,7 @@ Provide the desktop runtime boundary and the minimal TypeScript user interface f
 | Interface | Owner | Contract |
 |---|---|---|
 | `application_status` | Rust/Tauri command | Returns app name, semantic version, and the `local-only` storage mode. |
+| `get_dashboard` | Rust/Tauri command | Delegates to the grade-repository module for a typed local summary. |
 | `pnpm dev` | Vite | Starts the browser frontend development server. |
 | `pnpm tauri dev` | Tauri CLI | Starts the desktop development application. |
 | `pnpm build` | TypeScript + Vite | Performs strict TypeScript validation and produces `dist/`. |
@@ -16,11 +17,11 @@ Provide the desktop runtime boundary and the minimal TypeScript user interface f
 
 ## Data ownership
 
-This module owns no student, credential, session, or grade data. SQLite and all academic data operations belong to the future data module.
+This module owns no student, credential, session, or grade data. SQLite and academic records belong to the grade-repository module.
 
 ## Security and privacy constraints
 
-- The frontend may invoke only the explicit `application_status` command in this step.
+- The frontend may invoke only explicit typed commands; no generic SQL or network command is available.
 - No network capability, credential storage, or raw SQL interface is introduced.
 - The window uses Tauri's isolation boundary; no global Tauri object is enabled for browser code.
 
@@ -41,5 +42,5 @@ pnpm tauri build --debug
 
 ## Known limitations
 
-- The landing view is intentionally a shell and displays no student information.
-- Authentication, SQLite, analytics, export, and synchronization have not yet been implemented.
+- The landing view is intentionally a shell and has no transcript or course-detail layout.
+- Authentication, analytics, export, and synchronization have not yet been implemented.

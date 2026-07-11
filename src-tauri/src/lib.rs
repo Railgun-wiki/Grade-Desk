@@ -1,3 +1,6 @@
+mod data;
+
+use data::Dashboard;
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -17,9 +20,14 @@ fn application_status() -> AppStatus {
     }
 }
 
+#[tauri::command]
+fn get_dashboard(app: tauri::AppHandle) -> Result<Dashboard, String> {
+    data::load_dashboard(&app)
+}
+
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![application_status])
+        .invoke_handler(tauri::generate_handler![application_status, get_dashboard])
         .run(tauri::generate_context!())
         .expect("error while running Grade Desk");
 }
