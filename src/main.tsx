@@ -119,7 +119,7 @@ function App() {
     } catch { setNotice("无法清除本地数据。请稍后重试。"); }
   };
   const startJwxtLogin = async () => { try { await invoke("start_jwxt_login"); setNotice("已打开受控教务登录窗口；完成登录后返回此处验证会话。"); } catch { setNotice("无法打开教务登录窗口。"); } };
-  const verifyJwxt = async () => { try { const result = await invoke<GradeQueryResult>("verify_jwxt_session"); setJwxt({ connected: true, message: `会话有效，可读取 ${result.courseCount} 门课程（${result.trainType}）。` }); } catch (error) { setJwxt({ connected: false, message: String(error) }); } };
+  const verifyJwxt = async () => { try { const saved = await invoke<JwxtStatus>("save_jwxt_session"); setJwxt(saved); const result = await invoke<GradeQueryResult>("verify_jwxt_session"); setJwxt({ connected: true, message: `会话有效，可读取 ${result.courseCount} 门课程（${result.trainType}）。` }); } catch (error) { setJwxt({ connected: false, message: String(error) }); } };
   const syncJwxt = async () => { try { const result = await invoke<GradeQueryResult>("sync_jwxt_grades"); setJwxt({ connected: true, message: `已同步 ${result.courseCount} 门官方课程。` }); setNotice("真实教务成绩已写入本地档案。"); } catch (error) { setJwxt({ connected: false, message: String(error) }); } };
 
   useEffect(() => {

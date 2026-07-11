@@ -12,7 +12,7 @@ Provide a macOS-only, controlled WebView flow for SYSU CAS/JWXT sign-in. It read
 | `jwxt_status` | Rust/Tauri command | Reports only whether a locally persisted session exists; it never returns a Cookie. |
 | `verify_jwxt_session` | Rust/Tauri command | Calls the official JWXT pull and grade-list endpoints using the Keychain session, then returns only course count and training type. |
 | `sync_jwxt_grades` | Rust/Tauri command | Normalizes the official JWXT list into SQLite and creates a local history snapshot. |
-| `jwxt-session-updated` | Tauri event | Announces that the controlled WebView has persisted a JWXT session; event payload contains no secret. |
+| `save_jwxt_session` | Rust/Tauri command | Reads the completed login window's JWXT Cookie on an explicit user action and saves it to Keychain. |
 
 ## Data ownership
 
@@ -21,7 +21,7 @@ The macOS Keychain owns the serialized JWXT Cookie set under the service `edu.sy
 ## Security and privacy constraints
 
 - Authentication occurs in a separate application-controlled WebView; the main UI never collects NetID or password fields.
-- Tauri's macOS WebView Cookie API can include HttpOnly cookies. The module persists only cookies scoped to `jwxt.sysu.edu.cn`.
+- Tauri's macOS WebView Cookie API can include HttpOnly cookies. The module persists only cookies scoped to `jwxt.sysu.edu.cn`; reading happens from an explicit command rather than a page-load callback to avoid WebKit main-thread contention.
 - Cookie values are never returned to TypeScript, rendered, logged, exported, or inserted into SQLite.
 - Network requests occur only after the user selects “验证并查询课程”. The implementation does not run the numeric-score probing endpoint automatically.
 - The feature is intentionally macOS-only. Windows/Linux behavior is not claimed or supported.

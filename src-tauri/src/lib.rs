@@ -80,6 +80,11 @@ fn start_jwxt_login(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn save_jwxt_session(app: tauri::AppHandle) -> Result<jwxt::JwxtStatus, String> {
+    jwxt::save_login_window_session(&app)
+}
+
+#[tauri::command]
 async fn verify_jwxt_session() -> Result<jwxt::GradeQueryResult, String> {
     jwxt::verify_session().await
 }
@@ -104,6 +109,7 @@ pub fn run() {
             clear_local_data,
             jwxt_status,
             start_jwxt_login,
+            save_jwxt_session,
             verify_jwxt_session,
             sync_jwxt_grades
         ])

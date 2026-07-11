@@ -3,10 +3,7 @@ use keyring::Entry;
 use reqwest::{header::COOKIE, Client, Url};
 use serde::Serialize;
 use serde_json::Value;
-use tauri::{
-    webview::{Cookie, PageLoadEvent},
-    AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
-};
+use tauri::{webview::Cookie, AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const JWXT_HOST: &str = "jwxt.sysu.edu.cn";
 const JWXT_LOGIN: &str = "https://jwxt.sysu.edu.cn/jwxt/api/sso/cas/login?pattern=student-login";
@@ -47,30 +44,25 @@ pub(crate) fn start_login(app: &AppHandle) -> Result<(), String> {
         window.set_focus().map_err(to_message)?;
         return Ok(());
     }
-    let handle = app.clone();
     let url: Url = JWXT_LOGIN.parse().map_err(to_message)?;
     WebviewWindowBuilder::new(app, "jwxt-login", WebviewUrl::External(url))
         .title("连接中大教务")
         .inner_size(980.0, 720.0)
         .min_inner_size(720.0, 560.0)
-        .on_page_load(move |window, payload| {
-            if payload.event() == PageLoadEvent::Finished
-                && payload.url().host_str() == Some(JWXT_HOST)
-            {
-                if persist_window_cookies(&window).is_ok() {
-                    let _ = handle.emit(
-                        "jwxt-session-updated",
-                        JwxtStatus {
-                            connected: true,
-                            message: "教务会话已保存到 macOS 钥匙串。".into(),
-                        },
-                    );
-                }
-            }
-        })
         .build()
         .map_err(to_message)?;
     Ok(())
+}
+
+pub(crate) fn save_login_window_session(app: &AppHandle) -> Result<JwxtStatus, String> {
+    let window = app
+        .get_webview_window("jwxt-login")
+        .ok_or_else(|| "未找到教务登录窗口。请先打开登录并完成认证。".to_owned())?;
+    persist_window_cookies(&window)?;
+    Ok(JwxtStatus {
+        connected: true,
+        message: "教务会话已保存到 macOS 钥匙串。".into(),
+    })
 }
 
 pub(crate) async fn verify_session() -> Result<GradeQueryResult, String> {
