@@ -11,6 +11,7 @@ Provide a macOS-only, controlled WebView flow for SYSU CAS/JWXT sign-in. It read
 | `start_jwxt_login` | Rust/Tauri command | Opens or focuses a controlled JWXT WebView window at the CAS-backed student login endpoint. |
 | `jwxt_status` | Rust/Tauri command | Reports only whether a locally persisted session exists; it never returns a Cookie. |
 | `verify_jwxt_session` | Rust/Tauri command | Calls the official JWXT pull and grade-list endpoints using the Keychain session, then returns only course count and training type. |
+| `sync_jwxt_grades` | Rust/Tauri command | Normalizes the official JWXT list into SQLite and creates a local history snapshot. |
 | `jwxt-session-updated` | Tauri event | Announces that the controlled WebView has persisted a JWXT session; event payload contains no secret. |
 
 ## Data ownership
@@ -43,5 +44,5 @@ CI=true pnpm tauri build --debug
 ## Known limitations
 
 - Real login and request validation require an authorized student account and are not exercised by automated tests.
-- `verify_jwxt_session` confirms and counts official course records; importing that result into the local grade repository is the next integration increment.
+- Numeric-score probing for grade-only records is deliberately not automatic; it requires a separate explicit action and rate-limited policy.
 - Exact session expiry and multi-factor behavior remain under the school's CAS policy.

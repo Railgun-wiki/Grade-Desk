@@ -98,6 +98,20 @@ pub(crate) struct ExportReceipt {
     pub(crate) record_count: usize,
 }
 
+#[derive(Debug)]
+pub(crate) struct RemoteGrade {
+    pub(crate) course_name: String,
+    pub(crate) course_code: String,
+    pub(crate) category: String,
+    pub(crate) class_number: String,
+    pub(crate) official_grade: Option<String>,
+    pub(crate) grade_point: Option<f64>,
+    pub(crate) credit: f64,
+    pub(crate) academic_year: String,
+    pub(crate) semester: i64,
+    pub(crate) passed: bool,
+}
+
 pub(crate) fn load_dashboard(app: &AppHandle) -> Result<Dashboard, String> {
     let connection = initialized_database(app)?;
     dashboard_from(&connection).map_err(to_message)
@@ -171,6 +185,45 @@ pub(crate) fn clear_local_data(app: &AppHandle) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+pub(crate) fn import_jwxt_grades(
+    app: &AppHandle,
+    grades: Vec<RemoteGrade>,
+) -> Result<ArchiveResult, String> {
+    let mut connection = initialized_database(app)?;
+    let transaction = connection.transaction().map_err(to_message)?;
+    let is_demo: bool = transaction
+        .query_row(
+            "SELECT display_name = '示例同学' FROM profiles WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+    if is_demo {
+        transaction.execute_batch("DELETE FROM sync_runs; DELETE FROM course_attempts; DELETE FROM courses; DELETE FROM terms;").map_err(to_message)?;
+        transaction
+            .execute(
+                "UPDATE profiles SET display_name = '已连接教务学生' WHERE id = 1",
+                [],
+            )
+            .map_err(to_message)?;
+    }
+    for grade in grades {
+        transaction.execute("INSERT OR IGNORE INTO terms (profile_id, academic_year, semester, train_type) VALUES (1, ?1, ?2, '本科')", params![grade.academic_year, grade.semester]).map_err(to_message)?;
+        let term_id: i64 = transaction.query_row("SELECT id FROM terms WHERE profile_id = 1 AND academic_year = ?1 AND semester = ?2 AND train_type = '本科'", params![grade.academic_year, grade.semester], |row| row.get(0)).map_err(to_message)?;
+        transaction.execute("INSERT INTO courses (profile_id, course_code, name, category) VALUES (1, ?1, ?2, ?3) ON CONFLICT(profile_id, course_code) DO UPDATE SET name = excluded.name, category = excluded.category", params![grade.course_code, grade.course_name, grade.category]).map_err(to_message)?;
+        let course_id: i64 = transaction
+            .query_row(
+                "SELECT id FROM courses WHERE profile_id = 1 AND course_code = ?1",
+                params![grade.course_code],
+                |row| row.get(0),
+            )
+            .map_err(to_message)?;
+        transaction.execute("INSERT INTO course_attempts (course_id, term_id, class_number, official_grade, numeric_score, score_kind, grade_point, credit, passed, recorded_at) VALUES (?1, ?2, ?3, ?4, NULL, 'official_grade', ?5, ?6, ?7, ?8) ON CONFLICT(term_id, class_number) DO UPDATE SET official_grade=excluded.official_grade, grade_point=excluded.grade_point, credit=excluded.credit, passed=excluded.passed, recorded_at=excluded.recorded_at", params![course_id, term_id, grade.class_number, grade.official_grade, grade.grade_point, grade.credit, grade.passed, now_timestamp()]).map_err(to_message)?;
+    }
+    transaction.commit().map_err(to_message)?;
+    archive_from(&mut connection).map_err(to_message)
 }
 
 fn initialized_database(app: &AppHandle) -> Result<Connection, String> {

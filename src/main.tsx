@@ -120,6 +120,7 @@ function App() {
   };
   const startJwxtLogin = async () => { try { await invoke("start_jwxt_login"); setNotice("已打开受控教务登录窗口；完成登录后返回此处验证会话。"); } catch { setNotice("无法打开教务登录窗口。"); } };
   const verifyJwxt = async () => { try { const result = await invoke<GradeQueryResult>("verify_jwxt_session"); setJwxt({ connected: true, message: `会话有效，可读取 ${result.courseCount} 门课程（${result.trainType}）。` }); } catch (error) { setJwxt({ connected: false, message: String(error) }); } };
+  const syncJwxt = async () => { try { const result = await invoke<GradeQueryResult>("sync_jwxt_grades"); setJwxt({ connected: true, message: `已同步 ${result.courseCount} 门官方课程。` }); setNotice("真实教务成绩已写入本地档案。"); } catch (error) { setJwxt({ connected: false, message: String(error) }); } };
 
   useEffect(() => {
     void Promise.all([invoke<Dashboard>("get_dashboard"), invoke<CourseAttempt[]>("list_course_attempts")])
@@ -154,7 +155,7 @@ function App() {
         {activeView === "overview" && <Overview dashboard={dashboard} attempts={attempts} onTranscript={() => setActiveView("transcript")} />}
         {activeView === "transcript" && <Transcript attempts={filteredAttempts} query={query} onQuery={setQuery} onSelect={setSelectedId} />}
         {activeView === "archive" && <Archive runs={syncRuns} changes={changes} onReview={() => void reviewChanges()} onExport={exportData} onClear={() => void clearData()} />}
-        {activeView === "connection" && <Connection status={jwxt} onLogin={() => void startJwxtLogin()} onVerify={() => void verifyJwxt()} />}
+        {activeView === "connection" && <Connection status={jwxt} onLogin={() => void startJwxtLogin()} onVerify={() => void verifyJwxt()} onSync={() => void syncJwxt()} />}
       </main>
       {detail && <CoursePanel detail={detail} onClose={() => setSelectedId(null)} />}
     </div>
@@ -205,8 +206,8 @@ function Archive({ runs, changes, onReview, onExport, onClear }: { runs: SyncRun
   </section>;
 }
 
-function Connection({ status, onLogin, onVerify }: { status: JwxtStatus; onLogin: () => void; onVerify: () => void }) {
-  return <section aria-labelledby="connection-title"><div className="page-heading"><div><p className="eyebrow">连接教务</p><h1 id="connection-title">受控登录</h1></div></div><div className="connection-card"><p className="eyebrow">CAS · JWXT</p><h2>{status.connected ? "教务会话已保存" : "在应用内完成统一认证"}</h2><p>{status.message}</p><div className="archive-actions"><button className="primary-button" type="button" onClick={onLogin}>打开教务登录</button><button className="secondary-button" type="button" onClick={onVerify}>验证并查询课程</button></div><p className="muted">密码仅在教务登录页面中输入。会话 Cookie 加密保存至 macOS 钥匙串，应用数据库不保存密码或 Cookie。</p></div></section>;
+function Connection({ status, onLogin, onVerify, onSync }: { status: JwxtStatus; onLogin: () => void; onVerify: () => void; onSync: () => void }) {
+  return <section aria-labelledby="connection-title"><div className="page-heading"><div><p className="eyebrow">连接教务</p><h1 id="connection-title">受控登录</h1></div></div><div className="connection-card"><p className="eyebrow">CAS · JWXT</p><h2>{status.connected ? "教务会话已保存" : "在应用内完成统一认证"}</h2><p>{status.message}</p><div className="archive-actions"><button className="primary-button" type="button" onClick={onLogin}>打开教务登录</button><button className="secondary-button" type="button" onClick={onVerify}>验证会话</button><button className="secondary-button" type="button" onClick={onSync}>同步官方成绩</button></div><p className="muted">密码仅在教务登录页面中输入。会话 Cookie 加密保存至 macOS 钥匙串，应用数据库不保存密码或 Cookie。</p></div></section>;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

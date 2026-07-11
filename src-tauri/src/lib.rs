@@ -84,6 +84,11 @@ async fn verify_jwxt_session() -> Result<jwxt::GradeQueryResult, String> {
     jwxt::verify_session().await
 }
 
+#[tauri::command]
+async fn sync_jwxt_grades(app: tauri::AppHandle) -> Result<jwxt::GradeQueryResult, String> {
+    jwxt::sync_grades(&app).await
+}
+
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -99,7 +104,8 @@ pub fn run() {
             clear_local_data,
             jwxt_status,
             start_jwxt_login,
-            verify_jwxt_session
+            verify_jwxt_session,
+            sync_jwxt_grades
         ])
         .run(tauri::generate_context!())
         .expect("error while running Grade Desk");

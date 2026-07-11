@@ -1,3 +1,4 @@
+use crate::data::{self, RemoteGrade};
 use keyring::Entry;
 use reqwest::{header::COOKIE, Client, Url};
 use serde::Serialize;
@@ -73,6 +74,17 @@ pub(crate) fn start_login(app: &AppHandle) -> Result<(), String> {
 }
 
 pub(crate) async fn verify_session() -> Result<GradeQueryResult, String> {
+    let (_, result) = fetch_grades().await?;
+    Ok(result)
+}
+
+pub(crate) async fn sync_grades(app: &AppHandle) -> Result<GradeQueryResult, String> {
+    let (records, result) = fetch_grades().await?;
+    data::import_jwxt_grades(app, records)?;
+    Ok(result)
+}
+
+async fn fetch_grades() -> Result<(Vec<RemoteGrade>, GradeQueryResult), String> {
     let header = load_cookie_header()?;
     let client = Client::new();
     let pull: Value = client
@@ -100,13 +112,69 @@ pub(crate) async fn verify_session() -> Result<GradeQueryResult, String> {
         .await
         .map_err(to_message)?;
     ensure_success(&grades)?;
-    let count = grades
+    let records = grades
         .get("data")
         .and_then(Value::as_array)
-        .map_or(0, Vec::len);
-    Ok(GradeQueryResult {
-        course_count: count,
+        .ok_or_else(|| "教务系统未返回成绩列表。".to_owned())?
+        .iter()
+        .filter_map(parse_grade)
+        .collect::<Vec<_>>();
+    let result = GradeQueryResult {
+        course_count: records.len(),
         train_type: train_type.to_owned(),
+    };
+    Ok((records, result))
+}
+
+fn parse_grade(value: &Value) -> Option<RemoteGrade> {
+    let course_name = value.get("scoCourseName")?.as_str()?.trim().to_owned();
+    let class_number = value
+        .get("teachClassNumber")
+        .or_else(|| value.get("scoCourseNumber"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown-class")
+        .to_owned();
+    let course_code = value
+        .get("scoCourseNumber")
+        .and_then(Value::as_str)
+        .unwrap_or(&class_number)
+        .to_owned();
+    Some(RemoteGrade {
+        course_name,
+        course_code,
+        category: value
+            .get("scoCourseCategoryName")
+            .and_then(Value::as_str)
+            .unwrap_or("未分类")
+            .to_owned(),
+        class_number,
+        official_grade: value
+            .get("scoFinalScore")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        grade_point: value
+            .get("scoPoint")
+            .and_then(Value::as_str)
+            .and_then(|point| point.parse().ok()),
+        credit: value
+            .get("scoCredit")
+            .and_then(Value::as_str)
+            .and_then(|credit| credit.parse().ok())
+            .unwrap_or(0.0),
+        academic_year: value
+            .get("scoSchoolYear")
+            .and_then(Value::as_str)
+            .unwrap_or("未知学年")
+            .to_owned(),
+        semester: value
+            .get("scoSemester")
+            .and_then(Value::as_i64)
+            .unwrap_or(1),
+        passed: value
+            .get("accessFlag")
+            .and_then(Value::as_str)
+            .map(|status| status.contains('过'))
+            .unwrap_or(true),
     })
 }
 
