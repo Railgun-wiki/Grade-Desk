@@ -11,6 +11,7 @@
 - `docs/modules/<module-name>.md`: one maintained document for every implementation module. Each records ownership, interfaces, data, security, dependencies, verification, and limitations.
 - [`docs/modules/app-shell.md`](modules/app-shell.md): Tauri, Vite, and Rust application shell.
 - [`docs/modules/grade-repository.md`](modules/grade-repository.md): local SQLite schema, seed data, and typed repository commands.
+- [`docs/modules/grade-dashboard.md`](modules/grade-dashboard.md): read-only overview, transcript, and course detail interface.
 
 ## Confirmed product direction
 
@@ -26,7 +27,7 @@
 | 1 | Repository governance, scope, and build plan | `git diff --check` | `docs: establish grade desk workspace plan` |
 | 2 | Tauri/Vite/Rust project shell and toolchain scripts; `docs/modules/app-shell.md` | pnpm frontend type check + Tauri build | `chore: scaffold grade desk desktop app` |
 | 3 | SQLite schema, migrations, repository commands, and seeded local demo profile; `docs/modules/grade-repository.md` | Rust tests + migration test | `feat(data): add local grade repository` |
-| 4 | Overview, transcript, and course-detail UI using local data | type check + production build | `feat(ui): add grade dashboard` |
+| 4 | Overview, transcript, and course-detail UI using local data; `docs/modules/grade-dashboard.md` | type check + production build | `feat(ui): add grade dashboard` |
 | 5 | Snapshot history, change review, export, and local-data deletion | tests + manual acceptance checklist | `feat(sync): add grade history workflow` |
 | 6 | CAS/JWXT adapter, only after authorization approval | integration tests against approved environment | `feat(auth): add authorized jwxt sync` |
 

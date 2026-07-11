@@ -17,11 +17,59 @@ pub(crate) struct Dashboard {
     pub(crate) last_synced_at: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CourseAttempt {
+    pub(crate) id: i64,
+    pub(crate) course_name: String,
+    pub(crate) course_code: String,
+    pub(crate) category: String,
+    pub(crate) official_grade: Option<String>,
+    pub(crate) numeric_score: Option<f64>,
+    pub(crate) score_kind: String,
+    pub(crate) grade_point: Option<f64>,
+    pub(crate) credit: f64,
+    pub(crate) passed: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ScoreComponent {
+    pub(crate) name: String,
+    pub(crate) score: Option<f64>,
+    pub(crate) weight: Option<f64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CourseDetail {
+    #[serde(flatten)]
+    pub(crate) attempt: CourseAttempt,
+    pub(crate) term: String,
+    pub(crate) class_number: Option<String>,
+    pub(crate) components: Vec<ScoreComponent>,
+}
+
 pub(crate) fn load_dashboard(app: &AppHandle) -> Result<Dashboard, String> {
+    let connection = initialized_database(app)?;
+    dashboard_from(&connection).map_err(to_message)
+}
+
+pub(crate) fn list_course_attempts(app: &AppHandle) -> Result<Vec<CourseAttempt>, String> {
+    let connection = initialized_database(app)?;
+    attempts_from(&connection).map_err(to_message)
+}
+
+pub(crate) fn get_course_detail(app: &AppHandle, attempt_id: i64) -> Result<CourseDetail, String> {
+    let connection = initialized_database(app)?;
+    course_detail_from(&connection, attempt_id).map_err(to_message)
+}
+
+fn initialized_database(app: &AppHandle) -> Result<Connection, String> {
     let mut connection = open_application_database(app)?;
     migrate(&connection).map_err(to_message)?;
     seed_demo_data(&mut connection).map_err(to_message)?;
-    dashboard_from(&connection).map_err(to_message)
+    Ok(connection)
 }
 
 fn open_application_database(app: &AppHandle) -> Result<Connection, String> {
@@ -173,6 +221,20 @@ fn seed_demo_data(connection: &mut Connection) -> SqlResult<()> {
         )?;
     }
 
+    let components = [
+        (1, "课堂练习", Some(96.0), Some(20.0)),
+        (1, "课程项目", Some(94.0), Some(30.0)),
+        (1, "期末考试", Some(91.0), Some(50.0)),
+        (2, "平时作业", Some(93.0), Some(30.0)),
+        (2, "期末考试", Some(90.0), Some(70.0)),
+    ];
+    for (attempt_id, name, score, weight) in components {
+        transaction.execute(
+            "INSERT INTO score_components (attempt_id, name, score, weight) VALUES (?1, ?2, ?3, ?4)",
+            params![attempt_id, name, score, weight],
+        )?;
+    }
+
     transaction.execute(
         "INSERT INTO sync_runs (id, profile_id, started_at, finished_at, status, source_version) VALUES (1, 1, ?1, ?1, 'completed', 'seed-v1')",
         params!["2026-07-12T00:00:00Z"],
@@ -216,6 +278,72 @@ fn dashboard_from(connection: &Connection) -> SqlResult<Dashboard> {
     )
 }
 
+fn attempts_from(connection: &Connection) -> SqlResult<Vec<CourseAttempt>> {
+    let mut statement = connection.prepare(
+        "
+        SELECT a.id, c.name, c.course_code, c.category, a.official_grade, a.numeric_score,
+               a.score_kind, a.grade_point, a.credit, a.passed
+        FROM course_attempts a
+        JOIN courses c ON c.id = a.course_id
+        ORDER BY c.course_code
+        ",
+    )?;
+    let rows = statement.query_map([], attempt_from_row)?;
+    rows.collect()
+}
+
+fn course_detail_from(connection: &Connection, attempt_id: i64) -> SqlResult<CourseDetail> {
+    let mut statement = connection.prepare(
+        "
+        SELECT a.id, c.name, c.course_code, c.category, a.official_grade, a.numeric_score,
+               a.score_kind, a.grade_point, a.credit, a.passed,
+               t.academic_year || ' 第' || t.semester || '学期', a.class_number
+        FROM course_attempts a
+        JOIN courses c ON c.id = a.course_id
+        JOIN terms t ON t.id = a.term_id
+        WHERE a.id = ?1
+        ",
+    )?;
+    let (attempt, term, class_number) = statement.query_row(params![attempt_id], |row| {
+        Ok((attempt_from_row(row)?, row.get(10)?, row.get(11)?))
+    })?;
+
+    let mut components_statement = connection.prepare(
+        "SELECT name, score, weight FROM score_components WHERE attempt_id = ?1 ORDER BY id",
+    )?;
+    let components = components_statement
+        .query_map(params![attempt_id], |row| {
+            Ok(ScoreComponent {
+                name: row.get(0)?,
+                score: row.get(1)?,
+                weight: row.get(2)?,
+            })
+        })?
+        .collect::<SqlResult<Vec<_>>>()?;
+
+    Ok(CourseDetail {
+        attempt,
+        term,
+        class_number,
+        components,
+    })
+}
+
+fn attempt_from_row(row: &rusqlite::Row<'_>) -> SqlResult<CourseAttempt> {
+    Ok(CourseAttempt {
+        id: row.get(0)?,
+        course_name: row.get(1)?,
+        course_code: row.get(2)?,
+        category: row.get(3)?,
+        official_grade: row.get(4)?,
+        numeric_score: row.get(5)?,
+        score_kind: row.get(6)?,
+        grade_point: row.get(7)?,
+        credit: row.get(8)?,
+        passed: row.get::<_, i64>(9)? == 1,
+    })
+}
+
 fn to_message(error: impl std::fmt::Display) -> String {
     format!("Unable to open local grade data: {error}")
 }
@@ -236,5 +364,10 @@ mod tests {
         assert_eq!(dashboard.course_count, 4);
         assert_eq!(dashboard.earned_credits, 13.0);
         assert!((dashboard.cumulative_gpa - 3.78).abs() < 0.01);
+
+        let attempts = attempts_from(&connection).expect("load attempts");
+        assert_eq!(attempts.len(), 4);
+        let detail = course_detail_from(&connection, 1).expect("load course detail");
+        assert_eq!(detail.components.len(), 3);
     }
 }

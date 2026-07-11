@@ -9,6 +9,8 @@ Own the local SQLite database for Grade Desk. It creates the version-1 schema, s
 | Interface | Owner | Contract |
 |---|---|---|
 | `get_dashboard` | Rust/Tauri command | Opens the app-data SQLite database, applies idempotent schema setup, seeds only an empty database, and returns one typed summary. |
+| `list_course_attempts` | Rust/Tauri command | Returns typed read-only course attempts ordered by course code. |
+| `get_course_detail(attemptId)` | Rust/Tauri command | Returns one typed attempt with term, class number, and score components. |
 | `grade-desk.db` | Rust repository | Local SQLite database stored only under the Tauri application-data directory. |
 
 ## Data ownership
@@ -38,5 +40,5 @@ pnpm build
 ## Known limitations
 
 - Schema migration is currently version 1 only; later changes require explicit incremental migrations.
-- The only read interface is the dashboard summary. Course lists, detail records, snapshots, export, and deletion arrive in later modules.
+- Snapshot comparison, export, deletion, and real synchronization arrive in later modules.
 - The demo profile is intentionally not a real synchronization result.
