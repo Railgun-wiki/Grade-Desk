@@ -1,6 +1,6 @@
 # Grade Desk implementation plan
 
-> Status: construction paused by user request  
+> Status: construction active — Step 2 in progress
 > Workspace: `/Users/yuki/Documents/coding/Sysuer`  
 > Reference only: `./Sysuer` (Android application, separate Git repository)
 
@@ -9,6 +9,7 @@
 - `AGENTS.md`: workspace rules, pnpm requirement, and documentation policy.
 - `docs/implementation-plan.md`: cross-module scope, sequencing, and decisions.
 - `docs/modules/<module-name>.md`: one maintained document for every implementation module. Each records ownership, interfaces, data, security, dependencies, verification, and limitations.
+- [`docs/modules/app-shell.md`](modules/app-shell.md): Tauri, Vite, and Rust application shell.
 
 ## Confirmed product direction
 

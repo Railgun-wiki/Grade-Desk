@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Grade Desk">
+  <rect width="512" height="512" rx="112" fill="#0066cc"/>
+  <path d="M151 137h210c14 0 25 11 25 25v188c0 14-11 25-25 25H151c-14 0-25-11-25-25V162c0-14 11-25 25-25Z" fill="#fff"/>
+  <path d="M171 190h170M171 244h112M171 298h74" stroke="#0066cc" stroke-linecap="round" stroke-width="28"/>
+  <path d="m319 294 20 20 43-51" fill="none" stroke="#0066cc" stroke-linecap="round" stroke-linejoin="round" stroke-width="25"/>
+</svg>

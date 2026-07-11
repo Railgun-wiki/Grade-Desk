@@ -34,6 +34,6 @@ This directory is the independent workspace for the student grade-management des
 - Update the module document whenever its interface, data schema, behavior, or verification procedure changes. Include the documentation update in the same focused Conventional Commit as the module change.
 - Keep `docs/implementation-plan.md` as the cross-module roadmap; it must link to all module documents once they exist.
 
-## Current hold
+## Current delivery state
 
-Implementation is paused. Until the user explicitly resumes construction, only planning and repository-governance documents may change.
+Construction is active. Complete the documented delivery steps in order and commit each verified step separately.
