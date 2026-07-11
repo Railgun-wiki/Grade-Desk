@@ -1,4 +1,5 @@
 mod data;
+mod jwxt;
 
 use data::{
     ArchiveResult, ChangeRecord, CourseAttempt, CourseDetail, Dashboard, ExportFormat,
@@ -68,6 +69,21 @@ fn clear_local_data(app: tauri::AppHandle) -> Result<(), String> {
     data::clear_local_data(&app)
 }
 
+#[tauri::command]
+fn jwxt_status() -> jwxt::JwxtStatus {
+    jwxt::status()
+}
+
+#[tauri::command]
+fn start_jwxt_login(app: tauri::AppHandle) -> Result<(), String> {
+    jwxt::start_login(&app)
+}
+
+#[tauri::command]
+async fn verify_jwxt_session() -> Result<jwxt::GradeQueryResult, String> {
+    jwxt::verify_session().await
+}
+
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -80,7 +96,10 @@ pub fn run() {
             list_pending_changes,
             review_pending_changes,
             export_grade_data,
-            clear_local_data
+            clear_local_data,
+            jwxt_status,
+            start_jwxt_login,
+            verify_jwxt_session
         ])
         .run(tauri::generate_context!())
         .expect("error while running Grade Desk");

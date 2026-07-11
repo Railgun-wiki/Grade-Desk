@@ -37,6 +37,8 @@ type SyncRun = { id: number; finishedAt: string; sourceVersion: string; snapshot
 type ChangeRecord = { id: number; courseName: string; courseCode: string; detectedAt: string; changeType: string };
 type ArchiveResult = { syncRunId: number; snapshotCount: number; changesDetected: number; finishedAt: string };
 type ExportReceipt = { format: string; path: string; recordCount: number };
+type JwxtStatus = { connected: boolean; message: string };
+type GradeQueryResult = { courseCount: number; trainType: string };
 
 const previewDashboard: Dashboard = {
   profileName: "示例同学", currentTerm: "2025-2026 第1学期", cumulativeGpa: 3.78,
@@ -62,19 +64,21 @@ function App() {
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard>(previewDashboard);
   const [attempts, setAttempts] = useState<CourseAttempt[]>(previewAttempts);
-  const [activeView, setActiveView] = useState<"overview" | "transcript" | "archive">("overview");
+  const [activeView, setActiveView] = useState<"overview" | "transcript" | "archive" | "connection">("overview");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<CourseDetail | null>(null);
   const [query, setQuery] = useState("");
   const [syncRuns, setSyncRuns] = useState<SyncRun[]>([]);
   const [changes, setChanges] = useState<ChangeRecord[]>([]);
   const [notice, setNotice] = useState("");
+  const [jwxt, setJwxt] = useState<JwxtStatus>({ connected: false, message: "正在检查教务会话…" });
 
   useEffect(() => {
     void invoke<AppStatus>("application_status").then(setStatus).catch(() => {
       setStatus({ name: "Grade Desk", version: "Web preview", storageMode: "local-only" });
     });
   }, []);
+  useEffect(() => { void invoke<JwxtStatus>("jwxt_status").then(setJwxt).catch(() => undefined); }, []);
 
   const refreshArchive = () => {
     void Promise.all([invoke<SyncRun[]>("list_sync_runs"), invoke<ChangeRecord[]>("list_pending_changes")])
@@ -114,6 +118,8 @@ function App() {
       setSyncRuns([]); setChanges([]); setSelectedId(null);
     } catch { setNotice("无法清除本地数据。请稍后重试。"); }
   };
+  const startJwxtLogin = async () => { try { await invoke("start_jwxt_login"); setNotice("已打开受控教务登录窗口；完成登录后返回此处验证会话。"); } catch { setNotice("无法打开教务登录窗口。"); } };
+  const verifyJwxt = async () => { try { const result = await invoke<GradeQueryResult>("verify_jwxt_session"); setJwxt({ connected: true, message: `会话有效，可读取 ${result.courseCount} 门课程（${result.trainType}）。` }); } catch (error) { setJwxt({ connected: false, message: String(error) }); } };
 
   useEffect(() => {
     void Promise.all([invoke<Dashboard>("get_dashboard"), invoke<CourseAttempt[]>("list_course_attempts")])
@@ -141,12 +147,14 @@ function App() {
         <button className={activeView === "transcript" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("transcript")} type="button">成绩单</button>
         <button className="nav-item" type="button" disabled>分析 <span>即将推出</span></button>
         <button className={activeView === "archive" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("archive")} type="button">归档</button>
+        <button className={activeView === "connection" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("connection")} type="button">连接教务</button>
       </aside>
       <main className="content" id="main-content">
         {notice && <p className="notice" role="status">{notice}</p>}
         {activeView === "overview" && <Overview dashboard={dashboard} attempts={attempts} onTranscript={() => setActiveView("transcript")} />}
         {activeView === "transcript" && <Transcript attempts={filteredAttempts} query={query} onQuery={setQuery} onSelect={setSelectedId} />}
         {activeView === "archive" && <Archive runs={syncRuns} changes={changes} onReview={() => void reviewChanges()} onExport={exportData} onClear={() => void clearData()} />}
+        {activeView === "connection" && <Connection status={jwxt} onLogin={() => void startJwxtLogin()} onVerify={() => void verifyJwxt()} />}
       </main>
       {detail && <CoursePanel detail={detail} onClose={() => setSelectedId(null)} />}
     </div>
@@ -195,6 +203,10 @@ function Archive({ runs, changes, onReview, onExport, onClear }: { runs: SyncRun
     </section><section className="section-card"><p className="eyebrow">隐私</p><h2>管理本机数据</h2><p className="archive-copy">导出文件会保存到应用数据目录。清除只影响此设备，不会修改教务系统。</p><button className="danger-button" type="button" onClick={onClear}>清除本地档案</button></section></div>
     <section className="table-card archive-table"><div className="section-heading"><div><p className="eyebrow">快照</p><h2>归档记录</h2></div></div>{runs.length > 0 ? runs.map((run) => <div className="run-row" key={run.id}><span><strong>本地快照 #{run.id}</strong><small>{run.sourceVersion}</small></span><span>{run.snapshotCount} 门课程</span><span>{run.changeCount} 项变更</span><time>{run.finishedAt}</time></div>) : <p className="empty-state">还没有本地快照。</p>}</section>
   </section>;
+}
+
+function Connection({ status, onLogin, onVerify }: { status: JwxtStatus; onLogin: () => void; onVerify: () => void }) {
+  return <section aria-labelledby="connection-title"><div className="page-heading"><div><p className="eyebrow">连接教务</p><h1 id="connection-title">受控登录</h1></div></div><div className="connection-card"><p className="eyebrow">CAS · JWXT</p><h2>{status.connected ? "教务会话已保存" : "在应用内完成统一认证"}</h2><p>{status.message}</p><div className="archive-actions"><button className="primary-button" type="button" onClick={onLogin}>打开教务登录</button><button className="secondary-button" type="button" onClick={onVerify}>验证并查询课程</button></div><p className="muted">密码仅在教务登录页面中输入。会话 Cookie 加密保存至 macOS 钥匙串，应用数据库不保存密码或 Cookie。</p></div></section>;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
