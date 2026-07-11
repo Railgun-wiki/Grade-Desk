@@ -1,10 +1,14 @@
-use rusqlite::{params, Connection, Result as SqlResult};
-use serde::Serialize;
-use std::fs;
+use rusqlite::{params, Connection, OptionalExtension, Result as SqlResult};
+use serde::{Deserialize, Serialize};
+use std::{
+    fs,
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use tauri::{AppHandle, Manager};
 
 const DATABASE_FILE: &str = "grade-desk.db";
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 2;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +54,50 @@ pub(crate) struct CourseDetail {
     pub(crate) components: Vec<ScoreComponent>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SyncRun {
+    pub(crate) id: i64,
+    pub(crate) finished_at: String,
+    pub(crate) source_version: String,
+    pub(crate) snapshot_count: i64,
+    pub(crate) change_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ChangeRecord {
+    pub(crate) id: i64,
+    pub(crate) course_name: String,
+    pub(crate) course_code: String,
+    pub(crate) detected_at: String,
+    pub(crate) change_type: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ArchiveResult {
+    pub(crate) sync_run_id: i64,
+    pub(crate) snapshot_count: usize,
+    pub(crate) changes_detected: usize,
+    pub(crate) finished_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ExportFormat {
+    Json,
+    Csv,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ExportReceipt {
+    pub(crate) format: String,
+    pub(crate) path: String,
+    pub(crate) record_count: usize,
+}
+
 pub(crate) fn load_dashboard(app: &AppHandle) -> Result<Dashboard, String> {
     let connection = initialized_database(app)?;
     dashboard_from(&connection).map_err(to_message)
@@ -65,6 +113,66 @@ pub(crate) fn get_course_detail(app: &AppHandle, attempt_id: i64) -> Result<Cour
     course_detail_from(&connection, attempt_id).map_err(to_message)
 }
 
+pub(crate) fn archive_current_data(app: &AppHandle) -> Result<ArchiveResult, String> {
+    let mut connection = initialized_database(app)?;
+    archive_from(&mut connection).map_err(to_message)
+}
+
+pub(crate) fn list_sync_runs(app: &AppHandle) -> Result<Vec<SyncRun>, String> {
+    let connection = initialized_database(app)?;
+    sync_runs_from(&connection).map_err(to_message)
+}
+
+pub(crate) fn list_pending_changes(app: &AppHandle) -> Result<Vec<ChangeRecord>, String> {
+    let connection = initialized_database(app)?;
+    pending_changes_from(&connection).map_err(to_message)
+}
+
+pub(crate) fn review_pending_changes(app: &AppHandle) -> Result<usize, String> {
+    let connection = initialized_database(app)?;
+    connection
+        .execute(
+            "UPDATE grade_changes SET reviewed_at = ?1 WHERE reviewed_at IS NULL",
+            params![now_timestamp()],
+        )
+        .map_err(to_message)
+}
+
+pub(crate) fn export_grade_data(
+    app: &AppHandle,
+    format: ExportFormat,
+) -> Result<ExportReceipt, String> {
+    let connection = initialized_database(app)?;
+    let attempts = attempts_from(&connection).map_err(to_message)?;
+    let directory = application_data_directory(app)?.join("exports");
+    fs::create_dir_all(&directory).map_err(to_message)?;
+    let (extension, content) = match format {
+        ExportFormat::Json => ("json", export_json(&attempts).map_err(to_message)?),
+        ExportFormat::Csv => ("csv", export_csv(&attempts)),
+    };
+    let path = directory.join(format!("grade-desk-{}.{}", now_timestamp(), extension));
+    fs::write(&path, content).map_err(to_message)?;
+    Ok(ExportReceipt {
+        format: extension.to_owned(),
+        path: path.display().to_string(),
+        record_count: attempts.len(),
+    })
+}
+
+pub(crate) fn clear_local_data(app: &AppHandle) -> Result<(), String> {
+    let database = application_data_directory(app)?.join(DATABASE_FILE);
+    for path in [
+        database.clone(),
+        PathBuf::from(format!("{}-wal", database.display())),
+        PathBuf::from(format!("{}-shm", database.display())),
+    ] {
+        if path.exists() {
+            fs::remove_file(path).map_err(to_message)?;
+        }
+    }
+    Ok(())
+}
+
 fn initialized_database(app: &AppHandle) -> Result<Connection, String> {
     let mut connection = open_application_database(app)?;
     migrate(&connection).map_err(to_message)?;
@@ -73,13 +181,18 @@ fn initialized_database(app: &AppHandle) -> Result<Connection, String> {
 }
 
 fn open_application_database(app: &AppHandle) -> Result<Connection, String> {
-    let directory = app.path().app_data_dir().map_err(to_message)?;
-    fs::create_dir_all(&directory).map_err(to_message)?;
+    let directory = application_data_directory(app)?;
     let connection = Connection::open(directory.join(DATABASE_FILE)).map_err(to_message)?;
     connection
         .execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")
         .map_err(to_message)?;
     Ok(connection)
+}
+
+fn application_data_directory(app: &AppHandle) -> Result<PathBuf, String> {
+    let directory = app.path().app_data_dir().map_err(to_message)?;
+    fs::create_dir_all(&directory).map_err(to_message)?;
+    Ok(directory)
 }
 
 fn migrate(connection: &Connection) -> SqlResult<()> {
@@ -144,7 +257,16 @@ fn migrate(connection: &Connection) -> SqlResult<()> {
             normalized_json TEXT NOT NULL,
             created_at TEXT NOT NULL
         );
-        PRAGMA user_version = 1;
+        CREATE TABLE IF NOT EXISTS grade_changes (
+            id INTEGER PRIMARY KEY,
+            attempt_id INTEGER NOT NULL REFERENCES course_attempts(id) ON DELETE CASCADE,
+            before_snapshot_id INTEGER REFERENCES grade_snapshots(id) ON DELETE SET NULL,
+            after_snapshot_id INTEGER NOT NULL REFERENCES grade_snapshots(id) ON DELETE CASCADE,
+            change_type TEXT NOT NULL,
+            detected_at TEXT NOT NULL,
+            reviewed_at TEXT
+        );
+        PRAGMA user_version = 2;
         ",
     )?;
 
@@ -242,7 +364,7 @@ fn seed_demo_data(connection: &mut Connection) -> SqlResult<()> {
     transaction.execute(
         "INSERT INTO grade_snapshots (sync_run_id, attempt_id, payload_hash, normalized_json, created_at)
          VALUES (1, 1, ?1, ?2, ?3)",
-        params!["seed-cs101-v1", r#"{"officialGrade":"A","scoreKind":"official_grade"}"#, "2026-07-12T00:00:00Z"],
+        params!["A||official_grade|4", r#"{"officialGrade":"A","numericScore":null,"scoreKind":"official_grade","gradePoint":4}"#, "2026-07-12T00:00:00Z"],
     )?;
     transaction.commit()
 }
@@ -344,6 +466,185 @@ fn attempt_from_row(row: &rusqlite::Row<'_>) -> SqlResult<CourseAttempt> {
     })
 }
 
+#[derive(Debug)]
+struct SnapshotInput {
+    attempt_id: i64,
+    official_grade: Option<String>,
+    numeric_score: Option<f64>,
+    score_kind: String,
+    grade_point: Option<f64>,
+}
+
+fn snapshot_inputs_from(connection: &Connection) -> SqlResult<Vec<SnapshotInput>> {
+    let mut statement = connection.prepare(
+        "SELECT id, official_grade, numeric_score, score_kind, grade_point FROM course_attempts ORDER BY id",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok(SnapshotInput {
+            attempt_id: row.get(0)?,
+            official_grade: row.get(1)?,
+            numeric_score: row.get(2)?,
+            score_kind: row.get(3)?,
+            grade_point: row.get(4)?,
+        })
+    })?;
+    rows.collect()
+}
+
+fn archive_from(connection: &mut Connection) -> SqlResult<ArchiveResult> {
+    let inputs = snapshot_inputs_from(connection)?;
+    let finished_at = now_timestamp();
+    let transaction = connection.transaction()?;
+    transaction.execute(
+        "INSERT INTO sync_runs (profile_id, started_at, finished_at, status, source_version) VALUES (1, ?1, ?1, 'completed', 'local-archive-v1')",
+        params![finished_at],
+    )?;
+    let sync_run_id = transaction.last_insert_rowid();
+    let mut changes_detected = 0;
+
+    for input in &inputs {
+        let (payload_hash, normalized_json) = snapshot_payload(input);
+        let previous: Option<(i64, String)> = transaction
+            .query_row(
+                "SELECT id, payload_hash FROM grade_snapshots WHERE attempt_id = ?1 ORDER BY id DESC LIMIT 1",
+                params![input.attempt_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        transaction.execute(
+            "INSERT INTO grade_snapshots (sync_run_id, attempt_id, payload_hash, normalized_json, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![sync_run_id, input.attempt_id, payload_hash, normalized_json, finished_at],
+        )?;
+        let after_snapshot_id = transaction.last_insert_rowid();
+        if let Some((before_snapshot_id, before_hash)) = previous {
+            if before_hash != payload_hash {
+                transaction.execute(
+                    "INSERT INTO grade_changes (attempt_id, before_snapshot_id, after_snapshot_id, change_type, detected_at) VALUES (?1, ?2, ?3, 'grade_updated', ?4)",
+                    params![input.attempt_id, before_snapshot_id, after_snapshot_id, finished_at],
+                )?;
+                changes_detected += 1;
+            }
+        }
+    }
+    transaction.commit()?;
+    Ok(ArchiveResult {
+        sync_run_id,
+        snapshot_count: inputs.len(),
+        changes_detected,
+        finished_at,
+    })
+}
+
+fn snapshot_payload(input: &SnapshotInput) -> (String, String) {
+    let number = input
+        .numeric_score
+        .map(|value| value.to_string())
+        .unwrap_or_default();
+    let point = input
+        .grade_point
+        .map(|value| value.to_string())
+        .unwrap_or_default();
+    let grade = input.official_grade.clone().unwrap_or_default();
+    let payload_hash = format!("{grade}|{number}|{}|{point}", input.score_kind);
+    let normalized_json = serde_json::json!({
+        "officialGrade": input.official_grade,
+        "numericScore": input.numeric_score,
+        "scoreKind": input.score_kind,
+        "gradePoint": input.grade_point,
+    })
+    .to_string();
+    (payload_hash, normalized_json)
+}
+
+fn sync_runs_from(connection: &Connection) -> SqlResult<Vec<SyncRun>> {
+    let mut statement = connection.prepare(
+        "
+        SELECT r.id, COALESCE(r.finished_at, r.started_at), r.source_version,
+               COUNT(DISTINCT s.id), COUNT(DISTINCT c.id)
+        FROM sync_runs r
+        LEFT JOIN grade_snapshots s ON s.sync_run_id = r.id
+        LEFT JOIN grade_changes c ON c.after_snapshot_id = s.id
+        GROUP BY r.id
+        ORDER BY r.id DESC
+        ",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok(SyncRun {
+            id: row.get(0)?,
+            finished_at: row.get(1)?,
+            source_version: row.get(2)?,
+            snapshot_count: row.get(3)?,
+            change_count: row.get(4)?,
+        })
+    })?;
+    rows.collect()
+}
+
+fn pending_changes_from(connection: &Connection) -> SqlResult<Vec<ChangeRecord>> {
+    let mut statement = connection.prepare(
+        "
+        SELECT g.id, c.name, c.course_code, g.detected_at, g.change_type
+        FROM grade_changes g
+        JOIN course_attempts a ON a.id = g.attempt_id
+        JOIN courses c ON c.id = a.course_id
+        WHERE g.reviewed_at IS NULL
+        ORDER BY g.id DESC
+        ",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok(ChangeRecord {
+            id: row.get(0)?,
+            course_name: row.get(1)?,
+            course_code: row.get(2)?,
+            detected_at: row.get(3)?,
+            change_type: row.get(4)?,
+        })
+    })?;
+    rows.collect()
+}
+
+fn export_json(attempts: &[CourseAttempt]) -> Result<String, serde_json::Error> {
+    serde_json::to_string_pretty(attempts)
+}
+
+fn export_csv(attempts: &[CourseAttempt]) -> String {
+    let mut rows =
+        vec!["课程代码,课程名称,课程类别,官方成绩,数值成绩,成绩来源,绩点,学分,是否通过".to_owned()];
+    rows.extend(attempts.iter().map(|attempt| {
+        [
+            csv_field(&attempt.course_code),
+            csv_field(&attempt.course_name),
+            csv_field(&attempt.category),
+            csv_field(attempt.official_grade.as_deref().unwrap_or("")),
+            attempt
+                .numeric_score
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            csv_field(&attempt.score_kind),
+            attempt
+                .grade_point
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            attempt.credit.to_string(),
+            attempt.passed.to_string(),
+        ]
+        .join(",")
+    }));
+    rows.join("\n")
+}
+
+fn csv_field(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "\"\""))
+}
+
+fn now_timestamp() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        .to_string()
+}
+
 fn to_message(error: impl std::fmt::Display) -> String {
     format!("Unable to open local grade data: {error}")
 }
@@ -369,5 +670,25 @@ mod tests {
         assert_eq!(attempts.len(), 4);
         let detail = course_detail_from(&connection, 1).expect("load course detail");
         assert_eq!(detail.components.len(), 3);
+
+        let initial_archive = archive_from(&mut connection).expect("archive current data");
+        assert_eq!(initial_archive.snapshot_count, 4);
+        assert_eq!(initial_archive.changes_detected, 0);
+
+        connection
+            .execute(
+                "UPDATE course_attempts SET official_grade = 'B' WHERE id = 1",
+                [],
+            )
+            .expect("change demo grade");
+        let changed_archive = archive_from(&mut connection).expect("archive changed data");
+        assert_eq!(changed_archive.changes_detected, 1);
+        assert_eq!(
+            pending_changes_from(&connection)
+                .expect("list changes")
+                .len(),
+            1
+        );
+        assert_eq!(export_csv(&attempts).lines().count(), 5);
     }
 }

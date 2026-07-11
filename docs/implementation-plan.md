@@ -1,6 +1,6 @@
 # Grade Desk implementation plan
 
-> Status: construction active — Step 2 in progress
+> Status: construction active — Step 5 in progress
 > Workspace: `/Users/yuki/Documents/coding/Sysuer`  
 > Reference only: `./Sysuer` (Android application, separate Git repository)
 
@@ -12,6 +12,7 @@
 - [`docs/modules/app-shell.md`](modules/app-shell.md): Tauri, Vite, and Rust application shell.
 - [`docs/modules/grade-repository.md`](modules/grade-repository.md): local SQLite schema, seed data, and typed repository commands.
 - [`docs/modules/grade-dashboard.md`](modules/grade-dashboard.md): read-only overview, transcript, and course detail interface.
+- [`docs/modules/archive-workflow.md`](modules/archive-workflow.md): local snapshots, review queue, controlled export, and deletion.
 
 ## Confirmed product direction
 
@@ -28,7 +29,7 @@
 | 2 | Tauri/Vite/Rust project shell and toolchain scripts; `docs/modules/app-shell.md` | pnpm frontend type check + Tauri build | `chore: scaffold grade desk desktop app` |
 | 3 | SQLite schema, migrations, repository commands, and seeded local demo profile; `docs/modules/grade-repository.md` | Rust tests + migration test | `feat(data): add local grade repository` |
 | 4 | Overview, transcript, and course-detail UI using local data; `docs/modules/grade-dashboard.md` | type check + production build | `feat(ui): add grade dashboard` |
-| 5 | Snapshot history, change review, export, and local-data deletion | tests + manual acceptance checklist | `feat(sync): add grade history workflow` |
+| 5 | Snapshot history, change review, export, and local-data deletion; `docs/modules/archive-workflow.md` | tests + manual acceptance checklist | `feat(sync): add grade history workflow` |
 | 6 | CAS/JWXT adapter, only after authorization approval | integration tests against approved environment | `feat(auth): add authorized jwxt sync` |
 
 ## Scope guardrails

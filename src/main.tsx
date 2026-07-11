@@ -33,6 +33,10 @@ type CourseAttempt = {
 
 type ScoreComponent = { name: string; score: number | null; weight: number | null };
 type CourseDetail = CourseAttempt & { term: string; classNumber: string | null; components: ScoreComponent[] };
+type SyncRun = { id: number; finishedAt: string; sourceVersion: string; snapshotCount: number; changeCount: number };
+type ChangeRecord = { id: number; courseName: string; courseCode: string; detectedAt: string; changeType: string };
+type ArchiveResult = { syncRunId: number; snapshotCount: number; changesDetected: number; finishedAt: string };
+type ExportReceipt = { format: string; path: string; recordCount: number };
 
 const previewDashboard: Dashboard = {
   profileName: "示例同学", currentTerm: "2025-2026 第1学期", cumulativeGpa: 3.78,
@@ -58,16 +62,58 @@ function App() {
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard>(previewDashboard);
   const [attempts, setAttempts] = useState<CourseAttempt[]>(previewAttempts);
-  const [activeView, setActiveView] = useState<"overview" | "transcript">("overview");
+  const [activeView, setActiveView] = useState<"overview" | "transcript" | "archive">("overview");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<CourseDetail | null>(null);
   const [query, setQuery] = useState("");
+  const [syncRuns, setSyncRuns] = useState<SyncRun[]>([]);
+  const [changes, setChanges] = useState<ChangeRecord[]>([]);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     void invoke<AppStatus>("application_status").then(setStatus).catch(() => {
       setStatus({ name: "Grade Desk", version: "Web preview", storageMode: "local-only" });
     });
   }, []);
+
+  const refreshArchive = () => {
+    void Promise.all([invoke<SyncRun[]>("list_sync_runs"), invoke<ChangeRecord[]>("list_pending_changes")])
+      .then(([nextRuns, nextChanges]) => { setSyncRuns(nextRuns); setChanges(nextChanges); })
+      .catch(() => undefined);
+  };
+
+  useEffect(() => { refreshArchive(); }, []);
+
+  const createArchive = async () => {
+    try {
+      const result = await invoke<ArchiveResult>("archive_current_data");
+      setNotice(`已创建 ${result.snapshotCount} 份本地快照；发现 ${result.changesDetected} 项变更。`);
+      refreshArchive();
+    } catch { setNotice("无法创建本地快照。请稍后重试。"); }
+  };
+
+  const exportData = async (format: "json" | "csv") => {
+    try {
+      const receipt = await invoke<ExportReceipt>("export_grade_data", { format });
+      setNotice(`已导出 ${receipt.recordCount} 条记录至 ${receipt.path}`);
+    } catch { setNotice("导出失败。请稍后重试。"); }
+  };
+
+  const reviewChanges = async () => {
+    try {
+      const reviewed = await invoke<number>("review_pending_changes");
+      setNotice(`已审阅 ${reviewed} 项变更。`); refreshArchive();
+    } catch { setNotice("无法更新审阅状态。请稍后重试。"); }
+  };
+
+  const clearData = async () => {
+    if (!window.confirm("确定要清除本机保存的成绩档案吗？此操作不会影响学校教务系统，且无法撤销。")) return;
+    try {
+      await invoke("clear_local_data");
+      setNotice("本地数据库已清除。重新打开应用时会创建匿名示例档案。");
+      setSyncRuns([]); setChanges([]); setSelectedId(null);
+    } catch { setNotice("无法清除本地数据。请稍后重试。"); }
+  };
 
   useEffect(() => {
     void Promise.all([invoke<Dashboard>("get_dashboard"), invoke<CourseAttempt[]>("list_course_attempts")])
@@ -89,17 +135,18 @@ function App() {
   return (
     <div className="app-shell">
       <header className="global-nav"><strong>Grade Desk</strong><span>{status ? status.storageMode : "本地优先"}</span></header>
-      <header className="context-nav"><span>成绩</span><span className="term-chip">{dashboard.currentTerm}</span><button className="primary-button" type="button" disabled>同步成绩</button></header>
+      <header className="context-nav"><span>成绩</span><span className="term-chip">{dashboard.currentTerm}</span><button className="primary-button" type="button" onClick={() => void createArchive()}>创建快照</button></header>
       <aside className="sidebar" aria-label="主导航">
         <button className={activeView === "overview" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("overview")} type="button">概览</button>
         <button className={activeView === "transcript" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("transcript")} type="button">成绩单</button>
         <button className="nav-item" type="button" disabled>分析 <span>即将推出</span></button>
-        <button className="nav-item" type="button" disabled>归档 <span>即将推出</span></button>
+        <button className={activeView === "archive" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("archive")} type="button">归档</button>
       </aside>
       <main className="content" id="main-content">
-        {activeView === "overview" ? <Overview dashboard={dashboard} attempts={attempts} onTranscript={() => setActiveView("transcript")} /> : (
-          <Transcript attempts={filteredAttempts} query={query} onQuery={setQuery} onSelect={setSelectedId} />
-        )}
+        {notice && <p className="notice" role="status">{notice}</p>}
+        {activeView === "overview" && <Overview dashboard={dashboard} attempts={attempts} onTranscript={() => setActiveView("transcript")} />}
+        {activeView === "transcript" && <Transcript attempts={filteredAttempts} query={query} onQuery={setQuery} onSelect={setSelectedId} />}
+        {activeView === "archive" && <Archive runs={syncRuns} changes={changes} onReview={() => void reviewChanges()} onExport={exportData} onClear={() => void clearData()} />}
       </main>
       {detail && <CoursePanel detail={detail} onClose={() => setSelectedId(null)} />}
     </div>
@@ -139,6 +186,15 @@ function Transcript({ attempts, query, onQuery, onSelect }: { attempts: CourseAt
 
 function CoursePanel({ detail, onClose }: { detail: CourseDetail; onClose: () => void }) {
   return <aside className="detail-panel" aria-labelledby="course-title"><button className="close-button" type="button" onClick={onClose} aria-label="关闭课程详情">×</button><p className="eyebrow">{detail.term}</p><h2 id="course-title">{detail.courseName}</h2><p className="course-code">{detail.courseCode} · {detail.category}</p><div className="grade-hero"><span>{scoreSource(detail)}</span><strong>{gradeLabel(detail)}</strong><small>{detail.gradePoint?.toFixed(1) ?? "—"} 绩点 · {detail.credit.toFixed(1)} 学分</small></div><section><h3>成绩构成</h3>{detail.components.length > 0 ? <div className="component-list">{detail.components.map((component) => <div key={component.name}><span>{component.name}</span><span>{component.score ?? "—"} · {component.weight ?? "—"}%</span></div>)}</div> : <p className="muted">教务未提供成绩构成。</p>}</section><section><h3>修读信息</h3><dl><div><dt>教学班</dt><dd>{detail.classNumber ?? "教务未提供"}</dd></div><div><dt>状态</dt><dd>{detail.passed ? "已通过" : "未通过"}</dd></div></dl></section></aside>;
+}
+
+function Archive({ runs, changes, onReview, onExport, onClear }: { runs: SyncRun[]; changes: ChangeRecord[]; onReview: () => void; onExport: (format: "json" | "csv") => void; onClear: () => void }) {
+  return <section aria-labelledby="archive-title"><div className="page-heading"><div><p className="eyebrow">归档</p><h1 id="archive-title">本地历史</h1></div><div className="archive-actions"><button className="secondary-button" type="button" onClick={() => onExport("csv")}>导出 CSV</button><button className="secondary-button" type="button" onClick={() => onExport("json")}>导出 JSON</button></div></div>
+    <div className="archive-grid"><section className="section-card"><div className="section-heading"><div><p className="eyebrow">待审阅</p><h2>检测到的变更</h2></div>{changes.length > 0 && <button className="text-button" type="button" onClick={onReview}>全部标记已审阅</button>}</div>
+      {changes.length > 0 ? <div className="change-list">{changes.map((change) => <div key={change.id}><span><strong>{change.courseName}</strong><small>{change.courseCode} · {change.changeType}</small></span><time>{change.detectedAt}</time></div>)}</div> : <p className="muted padded">当前没有待审阅的成绩变更。</p>}
+    </section><section className="section-card"><p className="eyebrow">隐私</p><h2>管理本机数据</h2><p className="archive-copy">导出文件会保存到应用数据目录。清除只影响此设备，不会修改教务系统。</p><button className="danger-button" type="button" onClick={onClear}>清除本地档案</button></section></div>
+    <section className="table-card archive-table"><div className="section-heading"><div><p className="eyebrow">快照</p><h2>归档记录</h2></div></div>{runs.length > 0 ? runs.map((run) => <div className="run-row" key={run.id}><span><strong>本地快照 #{run.id}</strong><small>{run.sourceVersion}</small></span><span>{run.snapshotCount} 门课程</span><span>{run.changeCount} 项变更</span><time>{run.finishedAt}</time></div>) : <p className="empty-state">还没有本地快照。</p>}</section>
+  </section>;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

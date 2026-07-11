@@ -15,7 +15,7 @@ Own the local SQLite database for Grade Desk. It creates the version-1 schema, s
 
 ## Data ownership
 
-The module owns `profiles`, `terms`, `courses`, `course_attempts`, `score_components`, `sync_runs`, and immutable `grade_snapshots`. `course_attempts.score_kind` makes official numbers, official grades, local derivations, and unavailable values mutually explicit.
+The module owns `profiles`, `terms`, `courses`, `course_attempts`, and `score_components`. The archive-workflow module owns `sync_runs`, immutable `grade_snapshots`, and `grade_changes`. `course_attempts.score_kind` makes official numbers, official grades, local derivations, and unavailable values mutually explicit.
 
 ## Security and privacy constraints
 
@@ -39,6 +39,6 @@ pnpm build
 
 ## Known limitations
 
-- Schema migration is currently version 1 only; later changes require explicit incremental migrations.
-- Snapshot comparison, export, deletion, and real synchronization arrive in later modules.
+- Schema version 2 is established with idempotent table creation; later changes still require explicit incremental migrations.
+- Real synchronization remains a later module.
 - The demo profile is intentionally not a real synchronization result.
