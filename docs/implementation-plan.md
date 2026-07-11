@@ -13,7 +13,7 @@
 - [`docs/modules/grade-repository.md`](modules/grade-repository.md): local SQLite schema, seed data, and typed repository commands.
 - [`docs/modules/grade-dashboard.md`](modules/grade-dashboard.md): read-only overview, transcript, and course detail interface.
 - [`docs/modules/archive-workflow.md`](modules/archive-workflow.md): local snapshots, review queue, controlled export, and deletion.
-- [`docs/modules/jwxt-session.md`](modules/jwxt-session.md): macOS controlled WebView, Keychain session persistence, and official query verification.
+- [`docs/modules/jwxt-session.md`](modules/jwxt-session.md): macOS controlled WebView, local session persistence, and official query verification.
 
 ## Confirmed product direction
 

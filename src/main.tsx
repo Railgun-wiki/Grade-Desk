@@ -207,7 +207,7 @@ function Archive({ runs, changes, onReview, onExport, onClear }: { runs: SyncRun
 }
 
 function Connection({ status, onLogin, onVerify, onSync }: { status: JwxtStatus; onLogin: () => void; onVerify: () => void; onSync: () => void }) {
-  return <section aria-labelledby="connection-title"><div className="page-heading"><div><p className="eyebrow">连接教务</p><h1 id="connection-title">受控登录</h1></div></div><div className="connection-card"><p className="eyebrow">CAS · JWXT</p><h2>{status.connected ? "教务会话已保存" : "在应用内完成统一认证"}</h2><p>{status.message}</p><div className="archive-actions"><button className="primary-button" type="button" onClick={onLogin}>打开教务登录</button><button className="secondary-button" type="button" onClick={onVerify}>验证会话</button><button className="secondary-button" type="button" onClick={onSync}>同步官方成绩</button></div><p className="muted">密码仅在教务登录页面中输入。会话 Cookie 加密保存至 macOS 钥匙串，应用数据库不保存密码或 Cookie。</p></div></section>;
+  return <section aria-labelledby="connection-title"><div className="page-heading"><div><p className="eyebrow">连接教务</p><h1 id="connection-title">受控登录</h1></div></div><div className="connection-card"><p className="eyebrow">CAS · JWXT</p><h2>{status.connected ? "教务会话已保存" : "在应用内完成统一认证"}</h2><p>{status.message}</p><div className="archive-actions"><button className="primary-button" type="button" onClick={onLogin}>打开教务登录</button><button className="secondary-button" type="button" onClick={onVerify}>验证会话</button><button className="secondary-button" type="button" onClick={onSync}>同步官方成绩</button></div><p className="muted">密码仅在教务登录页面中输入。会话 Cookie 保存在应用数据目录的本地文件，权限仅限当前用户；应用数据库不保存密码或 Cookie。</p></div></section>;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

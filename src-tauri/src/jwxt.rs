@@ -1,15 +1,14 @@
 use crate::data::{self, RemoteGrade};
-use keyring::Entry;
 use reqwest::{header::COOKIE, Client, Url};
 use serde::Serialize;
 use serde_json::Value;
+use std::{fs, path::PathBuf};
 use tauri::{webview::Cookie, AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const JWXT_HOST: &str = "jwxt.sysu.edu.cn";
 const JWXT_LOGIN: &str = "https://jwxt.sysu.edu.cn/jwxt/api/sso/cas/login?pattern=student-login";
 const JWXT_PULL: &str = "https://jwxt.sysu.edu.cn/jwxt/achievement-manage/score-check/getPull";
-const SESSION_SERVICE: &str = "edu.sysu.grade-desk";
-const SESSION_ACCOUNT: &str = "jwxt-cookie-v1";
+const SESSION_FILE: &str = "jwxt-session.json";
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -25,8 +24,8 @@ pub(crate) struct GradeQueryResult {
     pub(crate) train_type: String,
 }
 
-pub(crate) fn status() -> JwxtStatus {
-    match load_cookie_header() {
+pub(crate) fn status(app: &AppHandle) -> JwxtStatus {
+    match load_cookie_header(app) {
         Ok(header) if !header.is_empty() => JwxtStatus {
             connected: true,
             message: "已保存教务会话；可验证或同步。".into(),
@@ -58,26 +57,26 @@ pub(crate) fn save_login_window_session(app: &AppHandle) -> Result<JwxtStatus, S
     let window = app
         .get_webview_window("jwxt-login")
         .ok_or_else(|| "未找到教务登录窗口。请先打开登录并完成认证。".to_owned())?;
-    persist_window_cookies(&window)?;
+    persist_window_cookies(app, &window)?;
     Ok(JwxtStatus {
         connected: true,
         message: "教务会话已保存到 macOS 钥匙串。".into(),
     })
 }
 
-pub(crate) async fn verify_session() -> Result<GradeQueryResult, String> {
-    let (_, result) = fetch_grades().await?;
+pub(crate) async fn verify_session(app: &AppHandle) -> Result<GradeQueryResult, String> {
+    let (_, result) = fetch_grades(app).await?;
     Ok(result)
 }
 
 pub(crate) async fn sync_grades(app: &AppHandle) -> Result<GradeQueryResult, String> {
-    let (records, result) = fetch_grades().await?;
+    let (records, result) = fetch_grades(app).await?;
     data::import_jwxt_grades(app, records)?;
     Ok(result)
 }
 
-async fn fetch_grades() -> Result<(Vec<RemoteGrade>, GradeQueryResult), String> {
-    let header = load_cookie_header()?;
+async fn fetch_grades(app: &AppHandle) -> Result<(Vec<RemoteGrade>, GradeQueryResult), String> {
+    let header = load_cookie_header(app)?;
     let client = Client::new();
     let pull: Value = client
         .get(JWXT_PULL)
@@ -170,11 +169,23 @@ fn parse_grade(value: &Value) -> Option<RemoteGrade> {
     })
 }
 
-fn persist_window_cookies(window: &tauri::WebviewWindow) -> Result<(), String> {
+fn persist_window_cookies(app: &AppHandle, window: &tauri::WebviewWindow) -> Result<(), String> {
     let url: Url = format!("https://{JWXT_HOST}/")
         .parse()
         .map_err(to_message)?;
-    let cookies = window.cookies_for_url(url).map_err(to_message)?;
+    let mut cookies = window.cookies_for_url(url).map_err(to_message)?;
+    if cookies.is_empty() {
+        cookies = window
+            .cookies()
+            .map_err(to_message)?
+            .into_iter()
+            .filter(|cookie| {
+                cookie
+                    .domain()
+                    .is_some_and(|domain| domain.trim_start_matches('.').ends_with(JWXT_HOST))
+            })
+            .collect();
+    }
     if cookies.is_empty() {
         return Err("尚未获得教务会话 Cookie。".into());
     }
@@ -182,14 +193,18 @@ fn persist_window_cookies(window: &tauri::WebviewWindow) -> Result<(), String> {
         .into_iter()
         .map(|cookie| cookie.to_string())
         .collect();
-    session_entry()?
-        .set_password(&serde_json::to_string(&serialized).map_err(to_message)?)
-        .map_err(to_message)
+    let path = session_file(app)?;
+    fs::write(
+        &path,
+        serde_json::to_string(&serialized).map_err(to_message)?,
+    )
+    .map_err(to_message)?;
+    restrict_file_permissions(&path)?;
+    Ok(())
 }
 
-fn load_cookie_header() -> Result<String, String> {
-    let encoded = session_entry()?
-        .get_password()
+fn load_cookie_header(app: &AppHandle) -> Result<String, String> {
+    let encoded = fs::read_to_string(session_file(app)?)
         .map_err(|_| "尚未保存教务会话，请先在应用内完成登录。".to_owned())?;
     let cookies: Vec<String> = serde_json::from_str(&encoded).map_err(to_message)?;
     let pairs = cookies
@@ -207,8 +222,21 @@ fn load_cookie_header() -> Result<String, String> {
     }
 }
 
-fn session_entry() -> Result<Entry, String> {
-    Entry::new(SESSION_SERVICE, SESSION_ACCOUNT).map_err(to_message)
+fn session_file(app: &AppHandle) -> Result<PathBuf, String> {
+    let directory = app.path().app_data_dir().map_err(to_message)?;
+    fs::create_dir_all(&directory).map_err(to_message)?;
+    Ok(directory.join(SESSION_FILE))
+}
+
+#[cfg(unix)]
+fn restrict_file_permissions(path: &PathBuf) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600)).map_err(to_message)
+}
+
+#[cfg(not(unix))]
+fn restrict_file_permissions(_: &PathBuf) -> Result<(), String> {
+    Ok(())
 }
 
 fn ensure_success(response: &Value) -> Result<(), String> {
