@@ -15,6 +15,7 @@ const JWXT_PULL: &str = "https://jwxt.sysu.edu.cn/jwxt/achievement-manage/score-
 const JWXT_SCORE_LIST: &str = "https://jwxt.sysu.edu.cn/jwxt/achievement-manage/score-check/list";
 const JWXT_ACHIEVEMENT_SEARCH: &str =
     "https://jwxt.sysu.edu.cn/jwxt/achievement-manage/achievement/selfPageList";
+const JWXT_NUMERIC_PROBE: &str = "https://jwxt.sysu.edu.cn/jwxt/gradua-degree/graduatemsg/studentsGraduationExamination/studentCourse";
 const SESSION_FILE: &str = "jwxt-session.json";
 const DIAGNOSTIC_LOG: &str = "jwxt-diagnostics.log";
 
@@ -68,6 +69,12 @@ impl GradeQueryMethod {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SessionVerification {
     pub(crate) train_type: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NumericProbeResult {
+    pub(crate) numeric_score: i64,
 }
 
 pub(crate) fn status(app: &AppHandle) -> JwxtStatus {
@@ -128,6 +135,53 @@ pub(crate) async fn sync_grades(
     let (records, result) = fetch_grades(app, method).await?;
     data::import_jwxt_grades(app, records)?;
     Ok(result)
+}
+
+pub(crate) async fn probe_numeric_score(
+    app: &AppHandle,
+    attempt_id: i64,
+) -> Result<NumericProbeResult, String> {
+    let target = data::numeric_probe_target(app, attempt_id)?;
+    let candidates = numeric_score_candidates(&target.official_grade)?;
+    let header = load_cookie_header(app)?;
+    let client = Client::new();
+    info!(
+        attempts = candidates.len(),
+        "JWXT numeric-score probe requested by user"
+    );
+
+    for score in candidates {
+        let response = get_json(
+            app,
+            jwxt_post(&client, JWXT_NUMERIC_PROBE, &header).json(&serde_json::json!({
+                "pageNo": 1,
+                "pageSize": 10,
+                "total": true,
+                "param": {
+                    "achievementCourseNumber": target.class_number.as_str(),
+                    "beforeAchievementPoint": score,
+                    "afterAchievementPoint": score,
+                    "cultureTypeCode": "01"
+                }
+            })),
+            "numeric-score-probe",
+        )
+        .await?;
+        ensure_success(&response)?;
+        if response
+            .pointer("/data/total")
+            .and_then(value_to_number)
+            .is_some_and(|total| total > 0.0)
+        {
+            data::save_verified_numeric_score(app, attempt_id, score)?;
+            info!("JWXT numeric-score probe confirmed and saved locally");
+            return Ok(NumericProbeResult {
+                numeric_score: score,
+            });
+        }
+    }
+
+    Err("教务未确认该课程的数值成绩；未修改本地记录。".into())
 }
 
 async fn fetch_train_type(app: &AppHandle) -> Result<String, String> {
@@ -371,6 +425,23 @@ fn split_school_semester(value: &str) -> (String, i64) {
     (year.to_owned(), semester.parse().unwrap_or(1))
 }
 
+fn numeric_score_candidates(official_grade: &str) -> Result<Vec<i64>, String> {
+    let grade = official_grade.trim();
+    let base = match grade.chars().next() {
+        Some('A') => 100,
+        Some('B') => 90,
+        Some('C') => 80,
+        Some('D') => 70,
+        Some('F') => 60,
+        _ => return Err("该官方成绩不支持数值探测。".into()),
+    };
+    let ceiling = base - if grade.chars().count() == 2 { 0 } else { 6 };
+    if ceiling < 60 {
+        return Err("该官方成绩没有可探测的数值区间。".into());
+    }
+    Ok((60..=ceiling).rev().take(41).collect())
+}
+
 fn value_to_text(value: &Value) -> Option<String> {
     value
         .as_str()
@@ -510,5 +581,15 @@ mod tests {
         );
         assert_eq!(split_school_semester("2025-1"), ("2025".into(), 1));
         assert_eq!(split_school_semester("unknown"), ("unknown".into(), 1));
+    }
+
+    #[test]
+    fn bounds_numeric_score_candidates() {
+        assert_eq!(super::numeric_score_candidates("A+").unwrap().len(), 41);
+        assert_eq!(
+            super::numeric_score_candidates("B").unwrap(),
+            (60..=84).rev().collect::<Vec<_>>()
+        );
+        assert!(super::numeric_score_candidates("合格").is_err());
     }
 }

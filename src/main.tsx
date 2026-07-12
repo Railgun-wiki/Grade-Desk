@@ -41,6 +41,7 @@ type JwxtStatus = { connected: boolean; message: string };
 type GradeQueryMethod = "officialList" | "achievementSearch";
 type GradeQueryResult = { courseCount: number; trainType: string; method: GradeQueryMethod };
 type SessionVerification = { trainType: string };
+type NumericProbeResult = { numericScore: number };
 
 const previewDashboard: Dashboard = {
   profileName: "示例同学", currentTerm: "2025-2026 第1学期", cumulativeGpa: 3.78,
@@ -130,6 +131,12 @@ function App() {
   const startJwxtLogin = async () => { try { await invoke("start_jwxt_login"); setNotice("已打开受控教务登录窗口；完成登录后返回此处验证会话。"); } catch { setNotice("无法打开教务登录窗口。"); } };
   const verifyJwxt = async () => { try { if (!jwxt.connected) setJwxt(await invoke<JwxtStatus>("save_jwxt_session")); const result = await invoke<SessionVerification>("verify_jwxt_session"); setJwxt({ connected: true, message: `认证成功；教务会话有效（${result.trainType}）。成绩查询可稍后单独进行。` }); } catch (error) { setJwxt({ connected: false, message: String(error) }); } };
   const syncJwxt = async () => { try { const result = await invoke<GradeQueryResult>("sync_jwxt_grades", { method: queryMethod }); const method = result.method === "officialList" ? "官方成绩单" : "课程成绩检索"; setJwxt({ connected: true, message: `已通过${method}同步 ${result.courseCount} 门课程。` }); setNotice("真实教务成绩已写入本地档案。"); refreshGrades(); } catch (error) { setJwxt({ connected: true, message: String(error) }); } };
+  const probeNumericScore = async (attemptId: number) => {
+    if (!window.confirm("仅查询这一门等级制课程的教务数值。该操作最多发送 41 次顺序请求，不会自动对其他课程执行。是否继续？")) throw new Error("已取消数值探测。");
+    const result = await invoke<NumericProbeResult>("probe_jwxt_numeric_score", { attemptId });
+    refreshGrades();
+    return result.numericScore;
+  };
 
   useEffect(() => { refreshGrades(); }, []);
 
@@ -162,7 +169,7 @@ function App() {
         {activeView === "archive" && <Archive runs={syncRuns} changes={changes} onReview={() => void reviewChanges()} onExport={exportData} onClear={() => void clearData()} />}
         {activeView === "connection" && <Connection status={jwxt} method={queryMethod} onMethod={setQueryMethod} onLogin={() => void startJwxtLogin()} onVerify={() => void verifyJwxt()} onSync={() => void syncJwxt()} />}
       </main>
-      {detail && <CoursePanel detail={detail} onClose={() => setSelectedId(null)} />}
+      {detail && <CoursePanel detail={detail} onClose={() => setSelectedId(null)} onProbe={probeNumericScore} />}
     </div>
   );
 }
@@ -198,8 +205,12 @@ function Transcript({ attempts, query, onQuery, onSelect }: { attempts: CourseAt
   </section>;
 }
 
-function CoursePanel({ detail, onClose }: { detail: CourseDetail; onClose: () => void }) {
-  return <aside className="detail-panel" aria-labelledby="course-title"><button className="close-button" type="button" onClick={onClose} aria-label="关闭课程详情">×</button><p className="eyebrow">{detail.term}</p><h2 id="course-title">{detail.courseName}</h2><p className="course-code">{detail.courseCode} · {detail.category}</p><div className="grade-hero"><span>{scoreSource(detail)}</span><strong>{gradeLabel(detail)}</strong><small>{detail.gradePoint?.toFixed(1) ?? "—"} 绩点 · {detail.credit.toFixed(1)} 学分</small></div><section><h3>成绩构成</h3>{detail.components.length > 0 ? <div className="component-list">{detail.components.map((component) => <div key={component.name}><span>{component.name}</span><span>{component.score ?? "—"} · {component.weight ?? "—"}%</span></div>)}</div> : <p className="muted">教务未提供成绩构成。</p>}</section><section><h3>修读信息</h3><dl><div><dt>教学班</dt><dd>{detail.classNumber ?? "教务未提供"}</dd></div><div><dt>状态</dt><dd>{detail.passed ? "已通过" : "未通过"}</dd></div></dl></section></aside>;
+function CoursePanel({ detail, onClose, onProbe }: { detail: CourseDetail; onClose: () => void; onProbe: (attemptId: number) => Promise<number> }) {
+  const [probeState, setProbeState] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [probeMessage, setProbeMessage] = useState("");
+  const canProbe = detail.numericScore === null && detail.officialGrade !== null && detail.classNumber !== null;
+  const probe = async () => { try { setProbeState("running"); const score = await onProbe(detail.id); setProbeState("done"); setProbeMessage(`已验证教务数值：${score}`); } catch (error) { setProbeState("error"); setProbeMessage(String(error)); } };
+  return <aside className="detail-panel" aria-labelledby="course-title"><button className="close-button" type="button" onClick={onClose} aria-label="关闭课程详情">×</button><p className="eyebrow">{detail.term}</p><h2 id="course-title">{detail.courseName}</h2><p className="course-code">{detail.courseCode} · {detail.category}</p><div className="grade-hero"><span>{scoreSource(detail)}</span><strong>{gradeLabel(detail)}</strong><small>{detail.gradePoint?.toFixed(1) ?? "—"} 绩点 · {detail.credit.toFixed(1)} 学分</small></div>{canProbe && <section className="numeric-probe"><h3>数值成绩</h3><p className="muted">仅在你确认后探测此课程；不会自动运行或影响其他课程。</p><button className="secondary-button" type="button" disabled={probeState === "running"} onClick={() => void probe()}>{probeState === "running" ? "正在探测…" : "查询教务数值"}</button>{probeMessage && <p className={probeState === "error" ? "probe-message error" : "probe-message"} role="status">{probeMessage}</p>}</section>}<section><h3>成绩构成</h3>{detail.components.length > 0 ? <div className="component-list">{detail.components.map((component) => <div key={component.name}><span>{component.name}</span><span>{component.score ?? "—"} · {component.weight ?? "—"}%</span></div>)}</div> : <p className="muted">教务未提供成绩构成。</p>}</section><section><h3>修读信息</h3><dl><div><dt>教学班</dt><dd>{detail.classNumber ?? "教务未提供"}</dd></div><div><dt>状态</dt><dd>{detail.passed ? "已通过" : "未通过"}</dd></div></dl></section></aside>;
 }
 
 function Archive({ runs, changes, onReview, onExport, onClear }: { runs: SyncRun[]; changes: ChangeRecord[]; onReview: () => void; onExport: (format: "json" | "csv") => void; onClear: () => void }) {

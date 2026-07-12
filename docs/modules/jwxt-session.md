@@ -12,6 +12,7 @@ Provide a macOS-only, controlled WebView flow for SYSU CAS/JWXT sign-in. It read
 | `jwxt_status` | Rust/Tauri command | Reports only whether a locally persisted session exists; it never returns a Cookie. |
 | `verify_jwxt_session` | Rust/Tauri command | Calls only the official JWXT pull endpoint using the locally saved session. A successful response means authentication succeeded, regardless of grade-list policy. |
 | `sync_jwxt_grades(method)` | Rust/Tauri command | Uses a user-selected official JWXT grade-query method, normalizes its course results into SQLite, and creates a local history snapshot. |
+| `probe_jwxt_numeric_score(attemptId)` | Rust/Tauri command | Explicitly probes one locally stored grade-only course through the official graduation-course endpoint, then stores a returned verified numeric score locally. |
 | `save_jwxt_session` | Rust/Tauri command | Reads the completed login window's JWXT Cookie on an explicit user action and saves it to the app-data directory. |
 
 ## Data ownership
@@ -28,7 +29,8 @@ The app-data directory owns the serialized JWXT Cookie set in `jwxt-session.json
 - Official JWXT requests include the JWXT homepage Referer and a browser-compatible Accept/User-Agent header, matching the request context expected by the service.
 - For a JSON response, the JWXT business `code` is authoritative even if the service sends a nonstandard HTTP status (such as `600`). That status remains in diagnostics; malformed or HTML responses are still rejected.
 - Authentication verification occurs only after the user selects “验证会话”; it calls no grade endpoint. Grade queries occur only after the user selects a query method and then requests synchronization.
-- Supported query methods are the official score-check list and the official achievement search list. The UI requires an explicit user choice; unsupported numeric-score probing remains unavailable.
+- Supported grade-list query methods are the official score-check list and the official achievement search list. The UI requires an explicit user choice.
+- Numeric-score probing is never run during login, verification, synchronization, or page load. It requires an explicit foreground confirmation for one selected course, makes bounded sequential requests, and only persists a score when the official endpoint confirms it.
 - The feature is intentionally macOS-only. Windows/Linux behavior is not claimed or supported.
 
 ## Dependencies
@@ -49,6 +51,6 @@ CI=true pnpm tauri build --debug
 ## Known limitations
 
 - Real login and request validation require an authorized student account and are not exercised by automated tests.
-- Numeric-score probing for grade-only records is deliberately not automatic; it requires a separate explicit action and rate-limited policy.
+- Numeric-score probing is available only as a per-course explicit action. It can be rejected by JWXT policy, its score-range convention may change, and it should not be used as a bulk collection mechanism.
 - Per-term list queries use the same `score-check/list` endpoint and share its server-side policy. The separate `score-check/getSortByYear` statistics endpoint does not provide importable course records and is not exposed as a synchronization method. Numeric-score probing remains unavailable.
 - Exact session expiry and multi-factor behavior remain under the school's CAS policy.

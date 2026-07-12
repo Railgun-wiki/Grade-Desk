@@ -11,6 +11,8 @@ Own the local SQLite database for Grade Desk. It creates the version-1 schema, s
 | `get_dashboard` | Rust/Tauri command | Opens the app-data SQLite database, applies idempotent schema setup, seeds only an empty database, and returns one typed summary. |
 | `list_course_attempts` | Rust/Tauri command | Returns typed read-only course attempts ordered by course code. |
 | `get_course_detail(attemptId)` | Rust/Tauri command | Returns one typed attempt with term, class number, and score components. |
+| `numeric_probe_target(attemptId)` | Rust repository interface | Returns the minimum local class-number and official-grade metadata required for an explicitly requested remote probe; it never returns cookies or credentials. |
+| `save_verified_numeric_score(attemptId, score)` | Rust repository interface | Stores a remote-confirmed numeric score as `official_numeric`, updates the local timestamp, and captures a local history snapshot. |
 | `grade-desk.db` | Rust repository | Local SQLite database stored only under the Tauri application-data directory. |
 
 ## Data ownership
@@ -23,6 +25,7 @@ The module owns `profiles`, `terms`, `courses`, `course_attempts`, and `score_co
 - The seeded record is anonymous demo data and contains no credentials or real student identifiers.
 - Connections enable foreign keys and WAL mode. All seed writes run in one transaction.
 - Errors identify only the local repository operation; they do not expose query parameters or data payloads.
+- A remotely verified numeric score is distinct from an inferred conversion: it is saved only as `official_numeric`; absent confirmation leaves the official grade intact.
 
 ## Dependencies
 

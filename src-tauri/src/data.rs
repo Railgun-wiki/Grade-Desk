@@ -112,6 +112,12 @@ pub(crate) struct RemoteGrade {
     pub(crate) passed: bool,
 }
 
+#[derive(Debug)]
+pub(crate) struct NumericProbeTarget {
+    pub(crate) class_number: String,
+    pub(crate) official_grade: String,
+}
+
 pub(crate) fn load_dashboard(app: &AppHandle) -> Result<Dashboard, String> {
     let connection = initialized_database(app)?;
     dashboard_from(&connection).map_err(to_message)
@@ -125,6 +131,56 @@ pub(crate) fn list_course_attempts(app: &AppHandle) -> Result<Vec<CourseAttempt>
 pub(crate) fn get_course_detail(app: &AppHandle, attempt_id: i64) -> Result<CourseDetail, String> {
     let connection = initialized_database(app)?;
     course_detail_from(&connection, attempt_id).map_err(to_message)
+}
+
+pub(crate) fn numeric_probe_target(
+    app: &AppHandle,
+    attempt_id: i64,
+) -> Result<NumericProbeTarget, String> {
+    let connection = initialized_database(app)?;
+    let row = connection
+        .query_row(
+            "SELECT class_number, official_grade, numeric_score FROM course_attempts WHERE id = ?1",
+            params![attempt_id],
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<f64>>(2)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(to_message)?
+        .ok_or_else(|| "未找到该课程记录。".to_owned())?;
+    let (class_number, official_grade, numeric_score) = row;
+    if numeric_score.is_some() {
+        return Err("该课程已有已验证的教务数值。".into());
+    }
+    Ok(NumericProbeTarget {
+        class_number: class_number.ok_or_else(|| "该课程缺少教学班编号，无法探测。".to_owned())?,
+        official_grade: official_grade
+            .ok_or_else(|| "该课程不是等级制成绩，无法探测。".to_owned())?,
+    })
+}
+
+pub(crate) fn save_verified_numeric_score(
+    app: &AppHandle,
+    attempt_id: i64,
+    score: i64,
+) -> Result<(), String> {
+    let mut connection = initialized_database(app)?;
+    let updated = connection
+        .execute(
+            "UPDATE course_attempts SET numeric_score = ?1, score_kind = 'official_numeric', recorded_at = ?2 WHERE id = ?3 AND numeric_score IS NULL",
+            params![score, now_timestamp(), attempt_id],
+        )
+        .map_err(to_message)?;
+    if updated == 0 {
+        return Err("该课程已变更或已有教务数值，请刷新后重试。".into());
+    }
+    archive_from(&mut connection).map_err(to_message)?;
+    Ok(())
 }
 
 pub(crate) fn archive_current_data(app: &AppHandle) -> Result<ArchiveResult, String> {
