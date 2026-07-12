@@ -162,6 +162,9 @@ function App() {
 
   return (
     <div className="app-shell">
+      <header className="context-nav" data-tauri-drag-region>
+        <span className="window-title" data-tauri-drag-region>成绩</span>
+      </header>
       <aside className="sidebar" aria-label="主导航" data-tauri-drag-region>
         <div className="nav-items-group">
           <button className={activeView === "overview" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("overview")} type="button">概览</button>
@@ -189,7 +192,7 @@ function App() {
 
 function Overview({ dashboard, attempts, onTranscript }: { dashboard: Dashboard; attempts: CourseAttempt[]; onTranscript: () => void }) {
   return <section className="overview-page" aria-labelledby="overview-title">
-    <section className="welcome" aria-labelledby="overview-title" data-tauri-drag-region>
+    <section className="welcome" aria-labelledby="overview-title">
       <p className="eyebrow">个人成绩档案</p><h1 id="overview-title">你好，{dashboard.profileName}。</h1>
       <p>这是一份只属于你的本地学业记录。</p>
     </section>
@@ -210,7 +213,7 @@ function Overview({ dashboard, attempts, onTranscript }: { dashboard: Dashboard;
 function Metric({ label, value, note }: { label: string; value: string; note: string }) { return <article className="metric"><p>{label}</p><strong>{value}</strong><span>{note}</span></article>; }
 
 function Transcript({ attempts, query, onQuery, onSelect }: { attempts: CourseAttempt[]; query: string; onQuery: (value: string) => void; onSelect: (id: number) => void }) {
-  return <section aria-labelledby="transcript-title"><div className="page-heading" data-tauri-drag-region><div><p className="eyebrow">成绩单</p><h1 id="transcript-title">所有课程</h1></div><label className="search"><span>搜索</span><input value={query} onChange={(event) => onQuery(event.target.value)} placeholder="课程名称或代码" /></label></div>
+  return <section aria-labelledby="transcript-title"><div className="page-heading"><div><p className="eyebrow">成绩单</p><h1 id="transcript-title">所有课程</h1></div><label className="search"><span>搜索</span><input value={query} onChange={(event) => onQuery(event.target.value)} placeholder="课程名称或代码" /></label></div>
     <div className="table-card"><div className="table-header" aria-hidden="true"><span>课程</span><span>类别</span><span>学分</span><span>成绩</span><span>绩点</span></div>
       {attempts.map((course) => <button key={course.id} className="course-row" onClick={() => onSelect(course.id)} type="button"><span><strong>{course.courseName}</strong><small>{course.courseCode} · {scoreSource(course)}</small></span><span>{course.category}</span><span>{course.credit.toFixed(1)}</span><span><b>{gradeLabel(course)}</b><small>{course.passed ? "已通过" : "未通过"}</small></span><span>{course.gradePoint?.toFixed(1) ?? "—"}</span></button>)}
       {attempts.length === 0 && <p className="empty-state">没有匹配的课程。</p>}
@@ -236,7 +239,7 @@ function Archive({ runs, changes, onReview, onExport, onClear, onCreateArchive }
 }
 
 function Connection({ status, method, rankSummary, onMethod, onLogin, onVerify, onSync, onRank }: { status: JwxtStatus; method: GradeQueryMethod; rankSummary: RankSummary | null; onMethod: (method: GradeQueryMethod) => void; onLogin: () => void; onVerify: () => void; onSync: () => void; onRank: () => void }) {
-  return <section aria-labelledby="connection-title"><div className="page-heading" data-tauri-drag-region><div><p className="eyebrow">连接教务</p><h1 id="connection-title">受控登录</h1></div></div><div className="connection-card"><p className="eyebrow">CAS · JWXT</p><h2>{status.connected ? "教务会话已认证" : "在应用内完成统一认证"}</h2><p>{status.message}</p><div className="archive-actions"><button className="primary-button" type="button" onClick={onLogin}>打开教务登录</button><button className="secondary-button" type="button" onClick={onVerify}>验证会话</button></div><label className="query-method"><span>成绩查询方式</span><select value={method} onChange={(event) => onMethod(event.target.value as GradeQueryMethod)}><option value="officialList">官方成绩单</option><option value="achievementSearch">课程成绩检索</option></select></label><div className="archive-actions"><button className="secondary-button" type="button" onClick={onSync}>同步所选方式</button><button className="secondary-button" type="button" onClick={onRank}>查询排名统计</button></div>{rankSummary && <section className="rank-summary" aria-label="教务排名统计"><div><span>累计排名</span><strong>{rankSummary.totalRank ?? "—"}/{rankSummary.totalStudents ?? "—"}</strong></div><div><span>学期排名</span><strong>{rankSummary.termRank ?? "—"}/{rankSummary.totalStudents ?? "—"}</strong></div><div><span>累计绩点</span><strong>{rankSummary.cumulativeGpa ?? "—"}</strong></div><div><span>已获学分</span><strong>{rankSummary.earnedCredits ?? "—"}</strong></div></section>}<p className="muted">认证只验证 JWXT 会话，不依赖成绩是否可读。查询方式由你手动选择，仍受学校教务系统的业务规则约束。密码仅在教务登录页面中输入；Cookie 仅保存在本机受限文件中。</p></div></section>;
+  return <section aria-labelledby="connection-title"><div className="page-heading"><div><p className="eyebrow">连接教务</p><h1 id="connection-title">受控登录</h1></div></div><div className="connection-card"><p className="eyebrow">CAS · JWXT</p><h2>{status.connected ? "教务会话已认证" : "在应用内完成统一认证"}</h2><p>{status.message}</p><div className="archive-actions"><button className="primary-button" type="button" onClick={onLogin}>打开教务登录</button><button className="secondary-button" type="button" onClick={onVerify}>验证会话</button></div><label className="query-method"><span>成绩查询方式</span><select value={method} onChange={(event) => onMethod(event.target.value as GradeQueryMethod)}><option value="officialList">官方成绩单</option><option value="achievementSearch">课程成绩检索</option></select></label><div className="archive-actions"><button className="secondary-button" type="button" onClick={onSync}>同步所选方式</button><button className="secondary-button" type="button" onClick={onRank}>查询排名统计</button></div>{rankSummary && <section className="rank-summary" aria-label="教务排名统计"><div><span>累计排名</span><strong>{rankSummary.totalRank ?? "—"}/{rankSummary.totalStudents ?? "—"}</strong></div><div><span>学期排名</span><strong>{rankSummary.termRank ?? "—"}/{rankSummary.totalStudents ?? "—"}</strong></div><div><span>累计绩点</span><strong>{rankSummary.cumulativeGpa ?? "—"}</strong></div><div><span>已获学分</span><strong>{rankSummary.earnedCredits ?? "—"}</strong></div></section>}<p className="muted">认证只验证 JWXT 会话，不依赖成绩是否可读。查询方式由你手动选择，仍受学校教务系统的业务规则约束。密码仅在教务登录页面中输入；Cookie 仅保存在本机受限文件中。</p></div></section>;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

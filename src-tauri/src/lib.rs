@@ -7,6 +7,7 @@ use data::{
     ExportReceipt, SyncRun,
 };
 use serde::Serialize;
+use tauri::Manager;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -114,6 +115,25 @@ async fn query_jwxt_rank_summary(app: tauri::AppHandle) -> Result<jwxt::RankSumm
 pub fn run() {
     logging::init();
     tauri::Builder::default()
+        .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                #[cfg(target_os = "macos")]
+                {
+                    let effects = tauri::window::EffectsBuilder::new()
+                        .effects(vec![tauri::window::Effect::Sidebar])
+                        .build();
+                    let _ = window.set_effects(effects);
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    let effects = tauri::window::EffectsBuilder::new()
+                        .effects(vec![tauri::window::Effect::Mica])
+                        .build();
+                    let _ = window.set_effects(effects);
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             application_status,
             get_dashboard,

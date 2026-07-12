@@ -22,11 +22,8 @@
         "resizable": true,
         "transparent": true,
         "decorations": true,
-        "titleBarStyle": "Transparent",
-        "windowEffects": {
-          "effects": ["mica", "acrylic", "sidebar"],
-          "state": "followsWindowActiveState"
-        }
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {
