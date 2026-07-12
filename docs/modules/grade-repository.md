@@ -26,7 +26,7 @@ The module owns `profiles`, `terms`, `courses`, `course_attempts`, and `score_co
 - Connections enable foreign keys and WAL mode. All seed writes run in one transaction.
 - Errors identify only the local repository operation; they do not expose query parameters or data payloads.
 - A remotely verified numeric score is distinct from an inferred conversion: it is saved only as `official_numeric`; absent confirmation leaves the official grade intact.
-- GPA aggregation excludes `P` and `NP` from both the weighted-grade-point numerator and the credit denominator. Professional-course GPA includes only `专业必修`, `专业选修`, and `公共必修`; it excludes `公共选修` and other categories.
+- GPA aggregation excludes `P` and `NP` from both the weighted-grade-point numerator and the credit denominator. Professional-course GPA includes only `专业必修`/`专必`, `专业选修`/`专选`, and `公共必修`/`公必`; it excludes `公共选修`/`公选` and other categories. Category matching trims surrounding whitespace because that occurs in exported JWXT records.
 
 ## Dependencies
 

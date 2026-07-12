@@ -493,8 +493,8 @@ fn dashboard_from(connection: &Connection) -> SqlResult<Dashboard> {
                 0
             ),
             COALESCE(
-                SUM(CASE WHEN a.grade_point IS NOT NULL AND c.category IN ('专业必修', '专业选修', '公共必修') AND UPPER(TRIM(COALESCE(a.official_grade, ''))) NOT IN ('P', 'NP') THEN a.grade_point * a.credit ELSE 0 END)
-                / NULLIF(SUM(CASE WHEN a.grade_point IS NOT NULL AND c.category IN ('专业必修', '专业选修', '公共必修') AND UPPER(TRIM(COALESCE(a.official_grade, ''))) NOT IN ('P', 'NP') THEN a.credit ELSE 0 END), 0),
+                SUM(CASE WHEN a.grade_point IS NOT NULL AND TRIM(c.category) IN ('专业必修', '专业选修', '公共必修', '专必', '专选', '公必') AND UPPER(TRIM(COALESCE(a.official_grade, ''))) NOT IN ('P', 'NP') THEN a.grade_point * a.credit ELSE 0 END)
+                / NULLIF(SUM(CASE WHEN a.grade_point IS NOT NULL AND TRIM(c.category) IN ('专业必修', '专业选修', '公共必修', '专必', '专选', '公必') AND UPPER(TRIM(COALESCE(a.official_grade, ''))) NOT IN ('P', 'NP') THEN a.credit ELSE 0 END), 0),
                 0
             ),
             COALESCE((SELECT finished_at FROM sync_runs WHERE profile_id = p.id AND status = 'completed' ORDER BY id DESC LIMIT 1), '')
@@ -827,5 +827,41 @@ mod tests {
             1
         );
         assert_eq!(export_csv(&attempts).lines().count(), 6);
+    }
+
+    #[test]
+    fn professional_gpa_accepts_jwxt_abbreviated_categories() {
+        let mut connection = Connection::open_in_memory().expect("open in-memory database");
+        migrate(&connection).expect("apply schema");
+        seed_demo_data(&mut connection).expect("seed data");
+
+        connection
+            .execute(
+                "INSERT INTO courses (id, profile_id, course_code, name, category) VALUES (5, 1, 'AB101', '缩写专业课', ' 专必 ')",
+                [],
+            )
+            .expect("add abbreviated professional course");
+        connection
+            .execute(
+                "INSERT INTO course_attempts (id, course_id, term_id, class_number, official_grade, numeric_score, score_kind, grade_point, credit, passed, recorded_at) VALUES (5, 5, 1, 'AB101-01', 'A', 91, 'official_numeric', 4.0, 1.0, 1, '2026-07-12T00:00:00Z')",
+                [],
+            )
+            .expect("add abbreviated professional attempt");
+        connection
+            .execute(
+                "INSERT INTO courses (id, profile_id, course_code, name, category) VALUES (6, 1, 'EL101', '缩写公共选修课', '公选')",
+                [],
+            )
+            .expect("add abbreviated elective course");
+        connection
+            .execute(
+                "INSERT INTO course_attempts (id, course_id, term_id, class_number, official_grade, numeric_score, score_kind, grade_point, credit, passed, recorded_at) VALUES (6, 6, 1, 'EL101-01', 'B', 82, 'official_numeric', 3.3, 1.0, 1, '2026-07-12T00:00:00Z')",
+                [],
+            )
+            .expect("add abbreviated elective attempt");
+
+        let dashboard = dashboard_from(&connection).expect("recalculate dashboard");
+        assert!((dashboard.all_gpa - (49.1 + 4.0 + 3.3) / 15.0).abs() < 0.001);
+        assert!((dashboard.professional_gpa - (41.1 + 4.0) / 12.0).abs() < 0.001);
     }
 }
