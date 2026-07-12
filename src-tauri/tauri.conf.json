@@ -20,7 +20,7 @@
         "minWidth": 320,
         "minHeight": 560,
         "resizable": true,
-        "transparent": true,
+        "transparent": false,
         "decorations": true,
         "titleBarStyle": "Transparent",
         "windowEffects": {
