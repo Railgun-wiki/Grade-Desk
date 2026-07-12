@@ -144,10 +144,16 @@ function App() {
 
   useEffect(() => {
     if (selectedId === null) { setDetail(null); return; }
-    void invoke<CourseDetail>("get_course_detail", { attemptId: selectedId }).then(setDetail).catch(() => {
+    let current = true;
+    setDetail(null);
+    void invoke<CourseDetail>("get_course_detail", { attemptId: selectedId }).then((nextDetail) => {
+      if (current) setDetail(nextDetail);
+    }).catch(() => {
+      if (!current) return;
       const attempt = attempts.find((item) => item.id === selectedId);
       if (attempt) setDetail({ ...attempt, term: dashboard.currentTerm, classNumber: null, components: [] });
     });
+    return () => { current = false; };
   }, [attempts, dashboard.currentTerm, selectedId]);
 
   const filteredAttempts = useMemo(() => attempts.filter((item) =>
@@ -164,20 +170,20 @@ function App() {
         <button className={activeView === "archive" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("archive")} type="button">归档</button>
         <button className={activeView === "connection" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("connection")} type="button">连接教务</button>
       </aside>
-      <main className="content" id="main-content">
+      <main className={`content ${activeView === "overview" ? "overview-content" : ""}`} id="main-content">
         {notice && <p className="notice" role="status">{notice}</p>}
         {activeView === "overview" && <Overview dashboard={dashboard} attempts={attempts} onTranscript={() => setActiveView("transcript")} />}
         {activeView === "transcript" && <Transcript attempts={filteredAttempts} query={query} onQuery={setQuery} onSelect={setSelectedId} />}
         {activeView === "archive" && <Archive runs={syncRuns} changes={changes} onReview={() => void reviewChanges()} onExport={exportData} onClear={() => void clearData()} />}
         {activeView === "connection" && <Connection status={jwxt} method={queryMethod} rankSummary={rankSummary} onMethod={setQueryMethod} onLogin={() => void startJwxtLogin()} onVerify={() => void verifyJwxt()} onSync={() => void syncJwxt()} onRank={() => void queryRankSummary()} />}
       </main>
-      {detail && <CoursePanel detail={detail} onClose={() => setSelectedId(null)} onProbe={probeNumericScore} />}
+      {detail && <CoursePanel key={detail.id} detail={detail} onClose={() => setSelectedId(null)} onProbe={probeNumericScore} />}
     </div>
   );
 }
 
 function Overview({ dashboard, attempts, onTranscript }: { dashboard: Dashboard; attempts: CourseAttempt[]; onTranscript: () => void }) {
-  return <>
+  return <section className="overview-page" aria-labelledby="overview-title">
     <section className="welcome" aria-labelledby="overview-title">
       <p className="eyebrow">个人成绩档案</p><h1 id="overview-title">你好，{dashboard.profileName}。</h1>
       <p>这是一份只属于你的本地学业记录。</p>
@@ -193,7 +199,7 @@ function Overview({ dashboard, attempts, onTranscript }: { dashboard: Dashboard;
       </div>
       <div className="dark-card"><p className="eyebrow">数据状态</p><h2>安全地留在这里。</h2><p>上次本地归档于 {dashboard.lastSyncedAt.slice(0, 10)}。目前展示的是示例档案，尚未连接教务系统。</p><span className="dark-link">本地存储 · 未连接账号</span></div>
     </section>
-  </>;
+  </section>;
 }
 
 function Metric({ label, value, note }: { label: string; value: string; note: string }) { return <article className="metric"><p>{label}</p><strong>{value}</strong><span>{note}</span></article>; }
