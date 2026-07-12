@@ -114,7 +114,7 @@ pub(crate) struct RemoteGrade {
 
 #[derive(Debug)]
 pub(crate) struct NumericProbeTarget {
-    pub(crate) class_number: String,
+    pub(crate) course_number: String,
     pub(crate) official_grade: String,
 }
 
@@ -140,7 +140,7 @@ pub(crate) fn numeric_probe_target(
     let connection = initialized_database(app)?;
     let row = connection
         .query_row(
-            "SELECT class_number, official_grade, numeric_score FROM course_attempts WHERE id = ?1",
+            "SELECT c.course_code, a.official_grade, a.numeric_score FROM course_attempts a JOIN courses c ON c.id = a.course_id WHERE a.id = ?1",
             params![attempt_id],
             |row| {
                 Ok((
@@ -153,12 +153,12 @@ pub(crate) fn numeric_probe_target(
         .optional()
         .map_err(to_message)?
         .ok_or_else(|| "未找到该课程记录。".to_owned())?;
-    let (class_number, official_grade, numeric_score) = row;
+    let (course_number, official_grade, numeric_score) = row;
     if numeric_score.is_some() {
         return Err("该课程已有已验证的教务数值。".into());
     }
     Ok(NumericProbeTarget {
-        class_number: class_number.ok_or_else(|| "该课程缺少教学班编号，无法探测。".to_owned())?,
+        course_number: course_number.ok_or_else(|| "该课程缺少课程号，无法探测。".to_owned())?,
         official_grade: official_grade
             .ok_or_else(|| "该课程不是等级制成绩，无法探测。".to_owned())?,
     })

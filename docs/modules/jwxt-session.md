@@ -32,6 +32,7 @@ The app-data directory owns the serialized JWXT Cookie set in `jwxt-session.json
 - Supported grade-list query methods are the official score-check list and the official achievement search list. The UI requires an explicit user choice.
 - Numeric-score probing is never run during login, verification, synchronization, or page load. It requires two explicit in-app actions for one selected course, makes bounded sequential requests, and only persists a score when the official endpoint confirms it.
 - Numeric-score probing writes a lifecycle diagnostic before local validation, then records each pre-request, request, response, persistence, or no-result failure without including course identifiers, grades, scores, Cookies, or response bodies.
+- The graduation-course endpoint receives the official course number (`scoCourseNumber`/local `course_code`), matching the reference implementation; it does not receive the teaching-class number.
 - The feature is intentionally macOS-only. Windows/Linux behavior is not claimed or supported.
 
 ## Dependencies

@@ -165,7 +165,7 @@ pub(crate) async fn probe_numeric_score(
                 "pageSize": 10,
                 "total": true,
                 "param": {
-                    "achievementCourseNumber": target.class_number.as_str(),
+                    "achievementCourseNumber": target.course_number.as_str(),
                     "beforeAchievementPoint": score,
                     "afterAchievementPoint": score,
                     "cultureTypeCode": "01"
