@@ -91,8 +91,8 @@ async fn start_jwxt_login(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn save_jwxt_session(app: tauri::AppHandle) -> Result<jwxt::JwxtStatus, String> {
-    jwxt::save_login_window_session(&app)
+async fn save_jwxt_session(app: tauri::AppHandle) -> Result<jwxt::JwxtStatus, String> {
+    jwxt::save_login_window_session(&app).await
 }
 
 #[tauri::command]

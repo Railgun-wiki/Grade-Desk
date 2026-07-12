@@ -1,0 +1,19 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Grade Desk",
+        "width": 1120,
+        "height": 760,
+        "minWidth": 320,
+        "minHeight": 560,
+        "resizable": true,
+        "transparent": false,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
+      }
+    ]
+  }
+}

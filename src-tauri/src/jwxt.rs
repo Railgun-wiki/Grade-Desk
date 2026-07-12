@@ -20,6 +20,8 @@ const JWXT_ACHIEVEMENT_SEARCH: &str =
 const JWXT_NUMERIC_PROBE: &str = "https://jwxt.sysu.edu.cn/jwxt/gradua-degree/graduatemsg/studentsGraduationExamination/studentCourse";
 const SESSION_FILE: &str = "jwxt-session.json";
 const DIAGNOSTIC_LOG: &str = "jwxt-diagnostics.log";
+#[cfg(windows)]
+const DPAPI_SESSION_PREFIX: &[u8] = b"GRADE_DESK_DPAPI_V1\0";
 
 #[derive(Clone, Copy)]
 enum DiagnosticLevel {
@@ -126,15 +128,22 @@ pub(crate) async fn start_login(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn save_login_window_session(app: &AppHandle) -> Result<JwxtStatus, String> {
+/// Persists authenticated WebView cookies without blocking the WebView2 UI thread.
+pub(crate) async fn save_login_window_session(app: &AppHandle) -> Result<JwxtStatus, String> {
     let window = app
         .get_webview_window("jwxt-login")
         .ok_or_else(|| "未找到教务登录窗口。请先打开登录并完成认证。".to_owned())?;
-    persist_window_cookies(app, &window)?;
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        persist_window_cookies(&app, &window)?;
+        window.close().map_err(to_message)
+    })
+    .await
+    .map_err(to_message)??;
     info!("JWXT session persisted locally after explicit user action");
     Ok(JwxtStatus {
         connected: true,
-        message: "教务会话已保存到本机。".into(),
+        message: "教务会话已保存到本机，登录窗口已关闭。".into(),
     })
 }
 
@@ -588,19 +597,17 @@ fn persist_window_cookies(app: &AppHandle, window: &tauri::WebviewWindow) -> Res
         .map(|cookie| cookie.to_string())
         .collect();
     let path = session_file(app)?;
-    fs::write(
-        &path,
-        serde_json::to_string(&serialized).map_err(to_message)?,
-    )
-    .map_err(to_message)?;
+    let payload = serde_json::to_vec(&serialized).map_err(to_message)?;
+    fs::write(&path, protect_session_payload(&payload)?).map_err(to_message)?;
     restrict_file_permissions(&path)?;
     Ok(())
 }
 
 fn load_cookie_header(app: &AppHandle) -> Result<String, String> {
-    let encoded = fs::read_to_string(session_file(app)?)
+    let encoded = fs::read(session_file(app)?)
         .map_err(|_| "尚未保存教务会话，请先在应用内完成登录。".to_owned())?;
-    let cookies: Vec<String> = serde_json::from_str(&encoded).map_err(to_message)?;
+    let cookies: Vec<String> =
+        serde_json::from_slice(&unprotect_session_payload(&encoded)?).map_err(to_message)?;
     let pairs = cookies
         .into_iter()
         .filter_map(|raw| {
@@ -672,6 +679,98 @@ fn restrict_file_permissions(path: &PathBuf) -> Result<(), String> {
 #[cfg(not(unix))]
 fn restrict_file_permissions(_: &PathBuf) -> Result<(), String> {
     Ok(())
+}
+
+#[cfg(not(windows))]
+fn protect_session_payload(payload: &[u8]) -> Result<Vec<u8>, String> {
+    Ok(payload.to_vec())
+}
+
+#[cfg(not(windows))]
+fn unprotect_session_payload(payload: &[u8]) -> Result<Vec<u8>, String> {
+    Ok(payload.to_vec())
+}
+
+#[cfg(windows)]
+fn protect_session_payload(payload: &[u8]) -> Result<Vec<u8>, String> {
+    use std::{ffi::c_void, ptr};
+    use windows_sys::Win32::{
+        Security::Cryptography::{CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, DATA_BLOB},
+        System::Memory::LocalFree,
+    };
+
+    let mut input = DATA_BLOB {
+        cbData: payload.len().try_into().map_err(to_message)?,
+        pbData: payload.as_ptr() as *mut u8,
+    };
+    let mut encrypted = DATA_BLOB {
+        cbData: 0,
+        pbData: ptr::null_mut(),
+    };
+    let protected = unsafe {
+        CryptProtectData(
+            &mut input,
+            ptr::null(),
+            ptr::null(),
+            ptr::null::<c_void>(),
+            ptr::null(),
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut encrypted,
+        )
+    };
+    if protected == 0 {
+        return Err("无法使用 Windows DPAPI 加密教务会话。".into());
+    }
+    let encrypted_bytes =
+        unsafe { std::slice::from_raw_parts(encrypted.pbData, encrypted.cbData as usize).to_vec() };
+    unsafe {
+        LocalFree(encrypted.pbData as *mut c_void);
+    }
+    let mut stored = DPAPI_SESSION_PREFIX.to_vec();
+    stored.extend(encrypted_bytes);
+    Ok(stored)
+}
+
+#[cfg(windows)]
+fn unprotect_session_payload(payload: &[u8]) -> Result<Vec<u8>, String> {
+    use std::{ffi::c_void, ptr};
+    use windows_sys::Win32::{
+        Security::Cryptography::{CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, DATA_BLOB},
+        System::Memory::LocalFree,
+    };
+
+    if !payload.starts_with(DPAPI_SESSION_PREFIX) {
+        return Ok(payload.to_vec());
+    }
+    let encrypted = &payload[DPAPI_SESSION_PREFIX.len()..];
+    let mut input = DATA_BLOB {
+        cbData: encrypted.len().try_into().map_err(to_message)?,
+        pbData: encrypted.as_ptr() as *mut u8,
+    };
+    let mut decrypted = DATA_BLOB {
+        cbData: 0,
+        pbData: ptr::null_mut(),
+    };
+    let unprotected = unsafe {
+        CryptUnprotectData(
+            &mut input,
+            ptr::null_mut(),
+            ptr::null(),
+            ptr::null::<c_void>(),
+            ptr::null(),
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut decrypted,
+        )
+    };
+    if unprotected == 0 {
+        return Err("无法使用 Windows DPAPI 解密教务会话。".into());
+    }
+    let decrypted_bytes =
+        unsafe { std::slice::from_raw_parts(decrypted.pbData, decrypted.cbData as usize).to_vec() };
+    unsafe {
+        LocalFree(decrypted.pbData as *mut c_void);
+    }
+    Ok(decrypted_bytes)
 }
 
 fn ensure_success(response: &Value) -> Result<(), String> {

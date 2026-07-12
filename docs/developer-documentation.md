@@ -66,6 +66,11 @@ graph TD
   sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
   ```
 
+#### 平台支持边界
+
+- **macOS / Windows 11 / Linux**：支持本地成绩管理和受控 JWXT/CAS 登录。Windows 会话文件使用当前用户的 DPAPI 加密；Unix 平台的会话文件权限设为 `0600`。
+- **Linux**：为兼容不同桌面合成器，原生窗口不使用透明效果。登录依赖 WebKitGTK，首次发布前必须在实际 Linux 桌面环境验证 CAS 跳转与 Cookie 持久化。
+
 ### 开发指令
 
 1. **安装前端依赖** (严禁引入 `npm`/`yarn`/`bun` 的 lockfile):

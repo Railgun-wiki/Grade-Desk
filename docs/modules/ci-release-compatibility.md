@@ -13,8 +13,9 @@ This module is responsible for:
 |---|---|---|
 | `application_status` | Rust command (modified) | Includes the platform OS type (`macos`, `windows`, or `linux`) in the returned status payload. |
 | `.os-macos`, `.os-windows`, `.os-linux` | CSS classes | Applied to `document.body` to override window-level visual settings and layout geometry. |
-| `.github/workflows/ci.yml` | GitHub Actions | Automatically triggers on pushes and PRs to verify the project builds on macOS, Windows, and Linux. |
+| `.github/workflows/ci.yml` | GitHub Actions | Automatically triggers on pushes and PRs to verify the Ubuntu/Linux build. |
 | `.github/workflows/release.yml` | GitHub Actions | Automatically triggers on version tags to build installers and compile production draft releases. |
+| `tauri.linux.conf.json` | Linux Tauri configuration | Disables the native transparent window while retaining the shared window size and native decorations. |
 
 ## Data ownership
 
@@ -26,6 +27,7 @@ This module does not own any student, credential, session, or grade database tab
 - The Release workflow uses the default `GITHUB_TOKEN` to publish releases, preventing exposure of personal access tokens or keys.
 - Code signing (macOS/Windows certificates) is skipped by default in the basic workflow, as distribution is intended for manual side-loading or local builds. Secrets should be added in GitHub settings if signing is enabled in the future.
 - The platform metadata exposed by `application_status` contains only general operating system names and does not collect or transmit unique hardware, device, or user identifiers.
+- Linux supports the same local grade-management and JWXT/CAS authentication flows as macOS and Windows. Its WebKitGTK Cookie behavior remains subject to physical Linux desktop verification.
 
 ## Dependencies
 
@@ -45,6 +47,7 @@ Inject different class names in the DOM using devtools (`os-macos`, `os-windows`
 - On macOS, the top drag header is 25px tall and the sidebar padding is 40px.
 - On Windows and Linux, the top drag header is hidden, and the sidebar padding-top is 20px.
 - On Linux, the background color of the body and sidebar is solid opaque to prevent transparency bugs.
+- On Linux, inspect the resolved Tauri configuration and confirm the native window sets `transparent: false`; CSS opacity alone is not sufficient to avoid compositor differences.
 
 ### Workflow Linting & Execution
 - Verify syntax with `actionlint` if installed.
@@ -54,3 +57,4 @@ Inject different class names in the DOM using devtools (`os-macos`, `os-windows`
 
 - Real Windows/macOS app code signing requires dedicated developer profiles and code-signing certificates which must be configured as repository secrets.
 - Auto-updating is not configured in the basic workflow.
+- The normal CI workflow intentionally runs only on Ubuntu. Windows and macOS are compile-verified by the tag-triggered Release workflow; WebView behavior on every desktop platform still requires physical-device verification.
