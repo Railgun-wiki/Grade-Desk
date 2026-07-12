@@ -695,15 +695,15 @@ fn unprotect_session_payload(payload: &[u8]) -> Result<Vec<u8>, String> {
 fn protect_session_payload(payload: &[u8]) -> Result<Vec<u8>, String> {
     use std::{ffi::c_void, ptr};
     use windows_sys::Win32::{
-        Security::Cryptography::{CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, DATA_BLOB},
-        System::Memory::LocalFree,
+        Foundation::LocalFree,
+        Security::Cryptography::{CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB},
     };
 
-    let mut input = DATA_BLOB {
+    let mut input = CRYPT_INTEGER_BLOB {
         cbData: payload.len().try_into().map_err(to_message)?,
         pbData: payload.as_ptr() as *mut u8,
     };
-    let mut encrypted = DATA_BLOB {
+    let mut encrypted = CRYPT_INTEGER_BLOB {
         cbData: 0,
         pbData: ptr::null_mut(),
     };
@@ -735,19 +735,21 @@ fn protect_session_payload(payload: &[u8]) -> Result<Vec<u8>, String> {
 fn unprotect_session_payload(payload: &[u8]) -> Result<Vec<u8>, String> {
     use std::{ffi::c_void, ptr};
     use windows_sys::Win32::{
-        Security::Cryptography::{CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, DATA_BLOB},
-        System::Memory::LocalFree,
+        Foundation::LocalFree,
+        Security::Cryptography::{
+            CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
+        },
     };
 
     if !payload.starts_with(DPAPI_SESSION_PREFIX) {
         return Ok(payload.to_vec());
     }
     let encrypted = &payload[DPAPI_SESSION_PREFIX.len()..];
-    let mut input = DATA_BLOB {
+    let mut input = CRYPT_INTEGER_BLOB {
         cbData: encrypted.len().try_into().map_err(to_message)?,
         pbData: encrypted.as_ptr() as *mut u8,
     };
-    let mut decrypted = DATA_BLOB {
+    let mut decrypted = CRYPT_INTEGER_BLOB {
         cbData: 0,
         pbData: ptr::null_mut(),
     };
