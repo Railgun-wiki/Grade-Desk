@@ -24,12 +24,14 @@ This module owns no student, credential, session, or grade data. SQLite and acad
 - The frontend may invoke only explicit typed commands; no generic SQL or network command is available.
 - No network capability, credential storage, or raw SQL interface is introduced.
 - The window uses Tauri's isolation boundary; no global Tauri object is enabled for browser code.
+- The macOS release enables Tauri's native `NSVisualEffectMaterial::Sidebar` window effect. Only the transparent navigation and sidebar regions expose it; the main content remains opaque. This uses Tauri's macOS private API and is not App Store eligible.
 
 ## Dependencies
 
 - pnpm-managed: React, React DOM, Vite, TypeScript, Tauri API, and Tauri CLI.
 - Cargo-managed: Tauri runtime and Tauri build helper.
 - System: Rust toolchain and the platform WebView required by Tauri.
+- macOS: native visual-effect support through Tauri's window-effects configuration.
 - The Vite macOS build target is Safari 15, matching the compiler baseline used by the current Vite toolchain.
 
 ## Verification
