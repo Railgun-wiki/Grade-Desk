@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-Provide a macOS-only, controlled WebView flow for SYSU CAS/JWXT sign-in. It reads the authenticated JWXT WebView cookies, persists them in the app-data directory, verifies a saved session independently of grade availability, and exposes user-selected official JWXT grade-query methods.
+Provide a macOS-only, controlled WebView flow for CAS/JWXT sign-in. It reads the authenticated JWXT WebView cookies, persists them in the app-data directory, verifies a saved session independently of grade availability, and exposes user-selected official JWXT grade-query methods.
 
 ## Public interfaces
 
@@ -58,4 +58,4 @@ CI=true pnpm tauri build --debug
 - Numeric-score probing is available only as a per-course explicit action. It can be rejected by JWXT policy, its score-range convention may change, and it should not be used as a bulk collection mechanism.
 - Per-term list queries use the same `score-check/list` endpoint and share its server-side policy. The separate `score-check/getSortByYear` statistics endpoint does not provide importable course records and is not exposed as a synchronization method.
 - `getSortByYear` is under the same JWXT score-check service family; its current evaluation-policy behavior must be treated as server-controlled and can differ from the grade list.
-- Exact session expiry and multi-factor behavior remain under the school's CAS policy.
+- Exact session expiry and multi-factor behavior remain under the host's CAS policy.

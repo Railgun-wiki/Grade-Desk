@@ -114,7 +114,7 @@ pub(crate) fn start_login(app: &AppHandle) -> Result<(), String> {
     }
     let url: Url = JWXT_LOGIN.parse().map_err(to_message)?;
     WebviewWindowBuilder::new(app, "jwxt-login", WebviewUrl::External(url))
-        .title("连接中大教务")
+        .title("连接教务系统")
         .inner_size(980.0, 720.0)
         .min_inner_size(720.0, 560.0)
         .build()

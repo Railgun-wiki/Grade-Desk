@@ -397,7 +397,7 @@ fn seed_demo_data(connection: &mut Connection) -> SqlResult<()> {
     let transaction = connection.transaction()?;
     transaction.execute(
         "INSERT INTO profiles (id, display_name, school, created_at) VALUES (1, ?1, ?2, ?3)",
-        params!["示例同学", "中山大学", "2026-07-12T00:00:00Z"],
+        params!["示例同学", "示例学校", "2026-07-12T00:00:00Z"],
     )?;
     transaction.execute(
         "INSERT INTO terms (id, profile_id, academic_year, semester, train_type) VALUES (1, 1, ?1, 1, ?2)",

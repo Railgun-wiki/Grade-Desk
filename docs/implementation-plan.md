@@ -1,6 +1,10 @@
 # Grade Desk 开发者文档 (Developer Guide)
 
-欢迎来到 Grade Desk 桌面端应用程序的开发文档！本项目是一个专为中大学子设计的**本地优先 (Local-first)、隐私安全**的成绩管理与分析桌面客户端。
+欢迎来到 Grade Desk 桌面端应用程序的开发文档！本项目是一个专为大学生设计的**本地优先 (Local-first)、隐私安全**的成绩管理与分析桌面客户端。
+
+> [!IMPORTANT]
+> **免责声明 (Disclaimer)**：
+> 本项目是一个独立开发的开源成绩管理工具，仅供个人学习、学业分析与学术研究使用。**本项目与任何高校或官方教务机构无任何关联，非官方发布软件。** 软件中涉及的教务对接机制仅在本地运行，请在遵守所在学校网络及系统使用规范的前提下使用。
 
 ---
 
@@ -18,7 +22,7 @@
 graph TD
     A[React Frontend] -->|IPC Commands| B[Tauri Command Layer]
     B -->|rusqlite| C[Local SQLite DB]
-    B -->|reqwest| D[SYSU JWXT / CAS]
+    B -->|reqwest| D[JWXT / CAS]
     A -->|CSS Layout| E[OS-specific Window Frame]
 ```
 
