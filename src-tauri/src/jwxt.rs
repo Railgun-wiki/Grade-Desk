@@ -22,6 +22,7 @@ const DIAGNOSTIC_LOG: &str = "jwxt-diagnostics.log";
 #[derive(Clone, Copy)]
 enum DiagnosticLevel {
     Debug,
+    Info,
     Warn,
 }
 
@@ -29,6 +30,7 @@ impl DiagnosticLevel {
     fn label(self) -> &'static str {
         match self {
             Self::Debug => "DEBUG",
+            Self::Info => "INFO",
             Self::Warn => "WARN",
         }
     }
@@ -141,9 +143,14 @@ pub(crate) async fn probe_numeric_score(
     app: &AppHandle,
     attempt_id: i64,
 ) -> Result<NumericProbeResult, String> {
-    let target = data::numeric_probe_target(app, attempt_id)?;
-    let candidates = numeric_score_candidates(&target.official_grade)?;
-    let header = load_cookie_header(app)?;
+    info!("JWXT numeric-score probe started");
+    write_diagnostic(app, DiagnosticLevel::Info, "numeric-score-probe: started");
+    let target = data::numeric_probe_target(app, attempt_id)
+        .map_err(|error| probe_failure(app, "numeric-score-probe/target", error))?;
+    let candidates = numeric_score_candidates(&target.official_grade)
+        .map_err(|error| probe_failure(app, "numeric-score-probe/candidates", error))?;
+    let header = load_cookie_header(app)
+        .map_err(|error| probe_failure(app, "numeric-score-probe/session", error))?;
     let client = Client::new();
     info!(
         attempts = candidates.len(),
@@ -166,14 +173,17 @@ pub(crate) async fn probe_numeric_score(
             })),
             "numeric-score-probe",
         )
-        .await?;
-        ensure_success(&response)?;
+        .await
+        .map_err(|error| probe_failure(app, "numeric-score-probe/request", error))?;
+        ensure_success(&response)
+            .map_err(|error| probe_failure(app, "numeric-score-probe/response", error))?;
         if response
             .pointer("/data/total")
             .and_then(value_to_number)
             .is_some_and(|total| total > 0.0)
         {
-            data::save_verified_numeric_score(app, attempt_id, score)?;
+            data::save_verified_numeric_score(app, attempt_id, score)
+                .map_err(|error| probe_failure(app, "numeric-score-probe/save", error))?;
             info!("JWXT numeric-score probe confirmed and saved locally");
             return Ok(NumericProbeResult {
                 numeric_score: score,
@@ -181,7 +191,11 @@ pub(crate) async fn probe_numeric_score(
         }
     }
 
-    Err("教务未确认该课程的数值成绩；未修改本地记录。".into())
+    Err(probe_failure(
+        app,
+        "numeric-score-probe/result",
+        "教务未确认该课程的数值成绩；未修改本地记录。".into(),
+    ))
 }
 
 async fn fetch_train_type(app: &AppHandle) -> Result<String, String> {
@@ -249,7 +263,20 @@ async fn get_json(
     request: RequestBuilder,
     operation: &str,
 ) -> Result<Value, String> {
-    let response = request.send().await.map_err(to_message)?;
+    let response = request.send().await.map_err(|error| {
+        let message = to_message(error);
+        warn!(
+            operation,
+            reason = message.as_str(),
+            "JWXT request failed before a response"
+        );
+        write_diagnostic(
+            app,
+            DiagnosticLevel::Warn,
+            &format!("{operation}: request failed: {message}"),
+        );
+        message
+    })?;
     let status = response.status();
     let content_type = response
         .headers()
@@ -257,7 +284,20 @@ async fn get_json(
         .and_then(|value| value.to_str().ok())
         .unwrap_or("missing")
         .to_owned();
-    let body = response.text().await.map_err(to_message)?;
+    let body = response.text().await.map_err(|error| {
+        let message = to_message(error);
+        warn!(
+            operation,
+            reason = message.as_str(),
+            "JWXT response body read failed"
+        );
+        write_diagnostic(
+            app,
+            DiagnosticLevel::Warn,
+            &format!("{operation}: body read failed: {message}"),
+        );
+        message
+    })?;
     let body_kind = if body.contains("Access Forbidden") {
         "access-forbidden"
     } else if body.trim_start().starts_with('<') {
@@ -530,6 +570,20 @@ fn write_diagnostic(app: &AppHandle, level: DiagnosticLevel, message: &str) {
         .open(&path)
         .and_then(|mut file| std::io::Write::write_all(&mut file, line.as_bytes()));
     let _ = restrict_file_permissions(&path);
+}
+
+fn probe_failure(app: &AppHandle, stage: &str, error: String) -> String {
+    warn!(
+        stage,
+        reason = error.as_str(),
+        "JWXT numeric-score probe failed"
+    );
+    write_diagnostic(
+        app,
+        DiagnosticLevel::Warn,
+        &format!("{stage}: failed: {error}"),
+    );
+    error
 }
 
 fn chrono_free_timestamp() -> String {

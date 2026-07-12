@@ -31,6 +31,7 @@ The app-data directory owns the serialized JWXT Cookie set in `jwxt-session.json
 - Authentication verification occurs only after the user selects “验证会话”; it calls no grade endpoint. Grade queries occur only after the user selects a query method and then requests synchronization.
 - Supported grade-list query methods are the official score-check list and the official achievement search list. The UI requires an explicit user choice.
 - Numeric-score probing is never run during login, verification, synchronization, or page load. It requires an explicit foreground confirmation for one selected course, makes bounded sequential requests, and only persists a score when the official endpoint confirms it.
+- Numeric-score probing writes a lifecycle diagnostic before local validation, then records each pre-request, request, response, persistence, or no-result failure without including course identifiers, grades, scores, Cookies, or response bodies.
 - The feature is intentionally macOS-only. Windows/Linux behavior is not claimed or supported.
 
 ## Dependencies
@@ -52,5 +53,5 @@ CI=true pnpm tauri build --debug
 
 - Real login and request validation require an authorized student account and are not exercised by automated tests.
 - Numeric-score probing is available only as a per-course explicit action. It can be rejected by JWXT policy, its score-range convention may change, and it should not be used as a bulk collection mechanism.
-- Per-term list queries use the same `score-check/list` endpoint and share its server-side policy. The separate `score-check/getSortByYear` statistics endpoint does not provide importable course records and is not exposed as a synchronization method. Numeric-score probing remains unavailable.
+- Per-term list queries use the same `score-check/list` endpoint and share its server-side policy. The separate `score-check/getSortByYear` statistics endpoint does not provide importable course records and is not exposed as a synchronization method.
 - Exact session expiry and multi-factor behavior remain under the school's CAS policy.
