@@ -1,6 +1,6 @@
 [package]
 name = "grade-desk"
-version = "0.1.0"
+version = "0.1.2"
 description = "Local-first student grade manager"
 authors = ["Grade Desk contributors"]
 edition = "2021"
