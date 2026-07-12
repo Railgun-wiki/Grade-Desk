@@ -25,6 +25,7 @@ This module owns no student, credential, session, or grade data. SQLite and acad
 - No network capability, credential storage, or raw SQL interface is introduced.
 - The window uses Tauri's isolation boundary; no global Tauri object is enabled for browser code.
 - The macOS release enables Tauri's native `NSVisualEffectMaterial::Sidebar` window effect. Only the transparent navigation and sidebar regions expose it; the main content remains opaque. This uses Tauri's macOS private API and is not App Store eligible.
+- The window decorations are disabled (`decorations: false`). Window management (close, minimize, maximize) is delegated to customized frontend controls mimicking macOS traffic lights, and drag-and-drop window operations rely on HTML elements marked with `data-tauri-drag-region`.
 
 ## Dependencies
 

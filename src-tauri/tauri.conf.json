@@ -21,6 +21,7 @@
         "minHeight": 560,
         "resizable": true,
         "transparent": true,
+        "decorations": false,
         "windowEffects": {
           "effects": ["sidebar"],
           "state": "followsWindowActiveState"

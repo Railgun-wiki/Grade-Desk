@@ -26,10 +26,12 @@ The module owns no data. It reads typed records from the grade repository and us
 
 ## Design system translation
 
-- Apple-derived surfaces: black 44px global bar, frosted parchment context bar, white utility cards, and one near-black information panel.
+- Apple-derived surfaces: clean macOS-style sidebar with customized traffic light window controls, frosted parchment context bar, white utility cards, and one near-black information panel.
 - Apple-derived tokens: Action Blue `#0066CC`, Sky Link Blue `#2997FF` on dark surfaces only, 18px cards, pill actions, 17px body copy, and SF system font stack.
 - The application uses no gradients or card/button shadows. Focus rings and 44px targets support keyboard and touch use.
-- The app shell is a single viewport: global/context navigation and the sidebar remain fixed while non-overview content scrolls in its own region. The overview page itself does not scroll; its variable-length course list scrolls inside its card.
+- The app shell is a single viewport: the context navigation and the sidebar remain fixed while non-overview content scrolls in its own region. The sidebar is structured as a full-height column (top-to-bottom) integrated with custom window controls on the top-left and app status footer at the bottom.
+- Non-linear transitions: clicking sidebar items and course list cards triggers smooth transition effects, while the course-detail drawer slides in from the right using Apple's typical damped animation curve (`cubic-bezier(0.25, 1, 0.5, 1)`).
+- Hover visual feedbacks are added for white-background buttons: secondary button fills with a translucent primary blue tint, and danger button displays a red border/text indicator.
 - Course-detail panels are keyed by attempt ID and reset their numeric-probe confirmation/result state whenever the user selects another course.
 
 ## Dependencies
