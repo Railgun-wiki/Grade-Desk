@@ -15,6 +15,7 @@ struct AppStatus {
     name: &'static str,
     version: &'static str,
     storage_mode: &'static str,
+    os: &'static str,
 }
 
 #[tauri::command]
@@ -23,6 +24,13 @@ fn application_status() -> AppStatus {
         name: "Grade Desk",
         version: env!("CARGO_PKG_VERSION"),
         storage_mode: "local-only",
+        os: if cfg!(target_os = "macos") {
+            "macos"
+        } else if cfg!(target_os = "windows") {
+            "windows"
+        } else {
+            "linux"
+        },
     }
 }
 

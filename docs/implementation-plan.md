@@ -15,6 +15,7 @@
 - [`docs/modules/archive-workflow.md`](modules/archive-workflow.md): local snapshots, review queue, controlled export, and deletion.
 - [`docs/modules/jwxt-session.md`](modules/jwxt-session.md): macOS controlled WebView, local session persistence, and official query verification.
 - [`docs/modules/logging.md`](modules/logging.md): Rust-side structured diagnostics and standard `RUST_LOG` filtering.
+- [`docs/modules/ci-release-compatibility.md`](modules/ci-release-compatibility.md): Platform-native window styling overrides and GitHub Actions workflows.
 
 ## Confirmed product direction
 
@@ -33,6 +34,7 @@
 | 4 | Overview, transcript, and course-detail UI using local data; `docs/modules/grade-dashboard.md` | type check + production build | `feat(ui): add grade dashboard` |
 | 5 | Snapshot history, change review, export, and local-data deletion; `docs/modules/archive-workflow.md` | tests + manual acceptance checklist | `feat(sync): add grade history workflow` |
 | 6 | CAS/JWXT adapter; `docs/modules/jwxt-session.md` | integration tests against approved environment | `feat(auth): add authorized jwxt sync` |
+| 7 | Multi-platform native window compatibility and GitHub Actions CI/Release; `docs/modules/ci-release-compatibility.md` | local build on macOS/Windows/Linux + verification | `feat(ci): add platform-native window support and actions` |
 
 ## Scope guardrails
 

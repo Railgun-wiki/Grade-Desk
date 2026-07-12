@@ -269,3 +269,47 @@ dd { margin: 0; text-align: right; }
   animation: slideUpFade 0.45s cubic-bezier(0.25, 1, 0.5, 1) 0.08s both;
 }
 
+/* ==========================================
+   Platform Native Window Frame Adaptations
+   ========================================== */
+
+/* Windows and Linux: Hide webview drag bar and reset sidebar top padding */
+body.os-windows .app-shell,
+body.os-linux .app-shell {
+  grid-template: minmax(0, 1fr) / 224px minmax(0, 1fr);
+}
+
+body.os-windows .context-nav,
+body.os-linux .context-nav {
+  display: none;
+}
+
+body.os-windows .sidebar,
+body.os-linux .sidebar {
+  padding-top: 20px;
+}
+
+body.os-windows .content,
+body.os-linux .content {
+  grid-row: 1;
+}
+
+body.os-windows .detail-panel,
+body.os-linux .detail-panel {
+  top: 0;
+}
+
+/* Linux-only: Disable transparent window effects to avoid compositor bugs */
+body.os-linux,
+body.os-linux #root,
+body.os-linux .app-shell {
+  background-color: #f5f5f7 !important;
+}
+
+body.os-linux .sidebar {
+  background-color: #ffffff !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+

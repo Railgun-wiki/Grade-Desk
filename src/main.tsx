@@ -7,6 +7,7 @@ type AppStatus = {
   name: string;
   version: string;
   storageMode: string;
+  os: string;
 };
 
 type Dashboard = {
@@ -81,8 +82,12 @@ function App() {
   const [rankSummary, setRankSummary] = useState<RankSummary | null>(null);
 
   useEffect(() => {
-    void invoke<AppStatus>("application_status").then(setStatus).catch(() => {
-      setStatus({ name: "Grade Desk", version: "Web preview", storageMode: "local-only" });
+    void invoke<AppStatus>("application_status").then((res) => {
+      setStatus(res);
+      document.body.className = `os-${res.os}`;
+    }).catch(() => {
+      setStatus({ name: "Grade Desk", version: "Web preview", storageMode: "local-only", os: "macos" });
+      document.body.className = "os-macos";
     });
   }, []);
   useEffect(() => { void invoke<JwxtStatus>("jwxt_status").then(setJwxt).catch(() => undefined); }, []);
