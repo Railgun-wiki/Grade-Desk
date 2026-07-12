@@ -1,9 +1,9 @@
 use crate::data::{self, RemoteGrade};
 use reqwest::{
     header::{ACCEPT, COOKIE, REFERER, USER_AGENT},
-    Client, Url,
+    Client, RequestBuilder, Url,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fs, path::PathBuf};
 use tauri::{webview::Cookie, AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
@@ -12,6 +12,9 @@ use tracing::{debug, info, warn};
 const JWXT_HOST: &str = "jwxt.sysu.edu.cn";
 const JWXT_LOGIN: &str = "https://jwxt.sysu.edu.cn/jwxt/api/sso/cas/login?pattern=student-login";
 const JWXT_PULL: &str = "https://jwxt.sysu.edu.cn/jwxt/achievement-manage/score-check/getPull";
+const JWXT_SCORE_LIST: &str = "https://jwxt.sysu.edu.cn/jwxt/achievement-manage/score-check/list";
+const JWXT_ACHIEVEMENT_SEARCH: &str =
+    "https://jwxt.sysu.edu.cn/jwxt/achievement-manage/achievement/selfPageList";
 const SESSION_FILE: &str = "jwxt-session.json";
 const DIAGNOSTIC_LOG: &str = "jwxt-diagnostics.log";
 
@@ -41,6 +44,29 @@ pub(crate) struct JwxtStatus {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct GradeQueryResult {
     pub(crate) course_count: usize,
+    pub(crate) train_type: String,
+    pub(crate) method: GradeQueryMethod,
+}
+
+#[derive(Deserialize, Serialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum GradeQueryMethod {
+    OfficialList,
+    AchievementSearch,
+}
+
+impl GradeQueryMethod {
+    fn label(self) -> &'static str {
+        match self {
+            Self::OfficialList => "官方成绩单",
+            Self::AchievementSearch => "课程成绩检索",
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SessionVerification {
     pub(crate) train_type: String,
 }
 
@@ -85,59 +111,91 @@ pub(crate) fn save_login_window_session(app: &AppHandle) -> Result<JwxtStatus, S
     })
 }
 
-pub(crate) async fn verify_session(app: &AppHandle) -> Result<GradeQueryResult, String> {
-    let (_, result) = fetch_grades(app).await?;
-    Ok(result)
+pub(crate) async fn verify_session(app: &AppHandle) -> Result<SessionVerification, String> {
+    let train_type = fetch_train_type(app).await?;
+    info!(train_type, "JWXT session verification succeeded");
+    Ok(SessionVerification { train_type })
 }
 
-pub(crate) async fn sync_grades(app: &AppHandle) -> Result<GradeQueryResult, String> {
-    let (records, result) = fetch_grades(app).await?;
+pub(crate) async fn sync_grades(
+    app: &AppHandle,
+    method: GradeQueryMethod,
+) -> Result<GradeQueryResult, String> {
+    info!(
+        method = method.label(),
+        "JWXT grade query requested by user"
+    );
+    let (records, result) = fetch_grades(app, method).await?;
     data::import_jwxt_grades(app, records)?;
     Ok(result)
 }
 
-async fn fetch_grades(app: &AppHandle) -> Result<(Vec<RemoteGrade>, GradeQueryResult), String> {
+async fn fetch_train_type(app: &AppHandle) -> Result<String, String> {
     let header = load_cookie_header(app)?;
     let client = Client::new();
-    let pull = get_json(app, &client, JWXT_PULL, &header, "getPull").await?;
+    let pull = get_json(app, jwxt_get(&client, JWXT_PULL, &header), "getPull").await?;
     ensure_success(&pull)?;
-    let train_type = pull
-        .pointer("/data/selectTrainType/0/dataNumber")
+    pull.pointer("/data/selectTrainType/0/dataNumber")
         .and_then(Value::as_str)
-        .ok_or_else(|| "教务系统未返回培养类别。".to_owned())?;
-    let url = format!("https://{JWXT_HOST}/jwxt/achievement-manage/score-check/list?trainTypeCode={train_type}&addScoreFlag=true");
-    let grades = get_json(app, &client, &url, &header, "score-check/list").await?;
+        .map(str::to_owned)
+        .ok_or_else(|| "教务系统未返回培养类别。".to_owned())
+}
+
+async fn fetch_grades(
+    app: &AppHandle,
+    method: GradeQueryMethod,
+) -> Result<(Vec<RemoteGrade>, GradeQueryResult), String> {
+    let header = load_cookie_header(app)?;
+    let client = Client::new();
+    let train_type = fetch_train_type(app).await?;
+    let grades = match method {
+        GradeQueryMethod::OfficialList => {
+            let url = format!("{JWXT_SCORE_LIST}?trainTypeCode={train_type}&addScoreFlag=true");
+            get_json(app, jwxt_get(&client, &url, &header), "score-check/list").await?
+        }
+        GradeQueryMethod::AchievementSearch => {
+            get_json(
+                app,
+                jwxt_post(&client, JWXT_ACHIEVEMENT_SEARCH, &header).json(&serde_json::json!({
+                    "pageNo": 1,
+                    "pageSize": 500,
+                    "total": true,
+                    "param": {}
+                })),
+                "achievement/selfPageList",
+            )
+            .await?
+        }
+    };
     ensure_success(&grades)?;
-    let records = grades
-        .get("data")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "教务系统未返回成绩列表。".to_owned())?
+    let items = match method {
+        GradeQueryMethod::OfficialList => grades.get("data").and_then(Value::as_array),
+        GradeQueryMethod::AchievementSearch => {
+            grades.pointer("/data/rows").and_then(Value::as_array)
+        }
+    }
+    .ok_or_else(|| "教务系统未返回可导入的成绩列表。".to_owned())?;
+    let records = items
         .iter()
-        .filter_map(parse_grade)
+        .filter_map(|grade| match method {
+            GradeQueryMethod::OfficialList => parse_grade(grade),
+            GradeQueryMethod::AchievementSearch => parse_achievement_grade(grade),
+        })
         .collect::<Vec<_>>();
     let result = GradeQueryResult {
         course_count: records.len(),
-        train_type: train_type.to_owned(),
+        train_type,
+        method,
     };
     Ok((records, result))
 }
 
 async fn get_json(
     app: &AppHandle,
-    client: &Client,
-    url: &str,
-    cookie: &str,
+    request: RequestBuilder,
     operation: &str,
 ) -> Result<Value, String> {
-    let response = client
-        .get(url)
-        .header(COOKIE, cookie)
-        .header(REFERER, format!("https://{JWXT_HOST}/"))
-        .header(ACCEPT, "application/json, text/plain, */*")
-        .header(USER_AGENT, "Mozilla/5.0 (Macintosh; ARM Mac OS X 15_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15")
-        .send()
-        .await
-        .map_err(to_message)?;
+    let response = request.send().await.map_err(to_message)?;
     let status = response.status();
     let content_type = response
         .headers()
@@ -199,6 +257,22 @@ async fn get_json(
     Ok(payload)
 }
 
+fn jwxt_request(request: RequestBuilder, cookie: &str) -> RequestBuilder {
+    request
+        .header(COOKIE, cookie)
+        .header(REFERER, format!("https://{JWXT_HOST}/"))
+        .header(ACCEPT, "application/json, text/plain, */*")
+        .header(USER_AGENT, "Mozilla/5.0 (Macintosh; ARM Mac OS X 15_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15")
+}
+
+fn jwxt_get(client: &Client, url: &str, cookie: &str) -> RequestBuilder {
+    jwxt_request(client.get(url), cookie)
+}
+
+fn jwxt_post(client: &Client, url: &str, cookie: &str) -> RequestBuilder {
+    jwxt_request(client.post(url), cookie)
+}
+
 fn parse_grade(value: &Value) -> Option<RemoteGrade> {
     let course_name = value.get("scoCourseName")?.as_str()?.trim().to_owned();
     let class_number = value
@@ -249,6 +323,66 @@ fn parse_grade(value: &Value) -> Option<RemoteGrade> {
             .map(|status| status.contains('过'))
             .unwrap_or(true),
     })
+}
+
+fn parse_achievement_grade(value: &Value) -> Option<RemoteGrade> {
+    let course_name = value.get("courseName")?.as_str()?.trim().to_owned();
+    let class_number = value
+        .get("classesNum")
+        .or_else(|| value.get("courseNum"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown-class")
+        .to_owned();
+    let course_code = value
+        .get("courseNum")
+        .and_then(Value::as_str)
+        .unwrap_or(&class_number)
+        .to_owned();
+    let term = value
+        .get("schoolSemester")
+        .and_then(Value::as_str)
+        .unwrap_or("未知学年");
+    let (academic_year, semester) = split_school_semester(term);
+    Some(RemoteGrade {
+        course_name,
+        course_code,
+        category: value
+            .get("courseCategoryName")
+            .and_then(Value::as_str)
+            .unwrap_or("未分类")
+            .to_owned(),
+        class_number,
+        official_grade: value
+            .get("finalAchievementStr")
+            .or_else(|| value.get("totalAchievement"))
+            .and_then(value_to_text),
+        grade_point: value.get("achievementPoint").and_then(value_to_number),
+        credit: value.get("credit").and_then(value_to_number).unwrap_or(0.0),
+        academic_year,
+        semester,
+        passed: true,
+    })
+}
+
+fn split_school_semester(value: &str) -> (String, i64) {
+    let Some((year, semester)) = value.rsplit_once('-') else {
+        return (value.to_owned(), 1);
+    };
+    (year.to_owned(), semester.parse().unwrap_or(1))
+}
+
+fn value_to_text(value: &Value) -> Option<String> {
+    value
+        .as_str()
+        .map(str::to_owned)
+        .or_else(|| value.as_i64().map(|number| number.to_string()))
+        .or_else(|| value.as_f64().map(|number| number.to_string()))
+}
+
+fn value_to_number(value: &Value) -> Option<f64> {
+    value
+        .as_f64()
+        .or_else(|| value.as_str().and_then(|number| number.parse().ok()))
 }
 
 fn persist_window_cookies(app: &AppHandle, window: &tauri::WebviewWindow) -> Result<(), String> {
@@ -362,4 +496,19 @@ fn ensure_success(response: &Value) -> Result<(), String> {
 
 fn to_message(error: impl std::fmt::Display) -> String {
     format!("教务连接失败：{error}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_school_semester;
+
+    #[test]
+    fn splits_jwxt_school_semester() {
+        assert_eq!(
+            split_school_semester("2025-2026-1"),
+            ("2025-2026".into(), 1)
+        );
+        assert_eq!(split_school_semester("2025-1"), ("2025".into(), 1));
+        assert_eq!(split_school_semester("unknown"), ("unknown".into(), 1));
+    }
 }

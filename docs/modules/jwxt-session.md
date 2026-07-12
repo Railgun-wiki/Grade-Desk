@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-Provide a macOS-only, controlled WebView flow for SYSU CAS/JWXT sign-in. It reads the authenticated JWXT WebView cookies, persists them in the app-data directory, and uses the saved session only when the user explicitly verifies or queries the official course-grade list.
+Provide a macOS-only, controlled WebView flow for SYSU CAS/JWXT sign-in. It reads the authenticated JWXT WebView cookies, persists them in the app-data directory, verifies a saved session independently of grade availability, and exposes user-selected official JWXT grade-query methods.
 
 ## Public interfaces
 
@@ -10,8 +10,8 @@ Provide a macOS-only, controlled WebView flow for SYSU CAS/JWXT sign-in. It read
 |---|---|---|
 | `start_jwxt_login` | Rust/Tauri command | Opens or focuses a controlled JWXT WebView window at the CAS-backed student login endpoint. |
 | `jwxt_status` | Rust/Tauri command | Reports only whether a locally persisted session exists; it never returns a Cookie. |
-| `verify_jwxt_session` | Rust/Tauri command | Calls the official JWXT pull and grade-list endpoints using the locally saved session, then returns only course count and training type. |
-| `sync_jwxt_grades` | Rust/Tauri command | Normalizes the official JWXT list into SQLite and creates a local history snapshot. |
+| `verify_jwxt_session` | Rust/Tauri command | Calls only the official JWXT pull endpoint using the locally saved session. A successful response means authentication succeeded, regardless of grade-list policy. |
+| `sync_jwxt_grades(method)` | Rust/Tauri command | Uses a user-selected official JWXT grade-query method, normalizes its course results into SQLite, and creates a local history snapshot. |
 | `save_jwxt_session` | Rust/Tauri command | Reads the completed login window's JWXT Cookie on an explicit user action and saves it to the app-data directory. |
 
 ## Data ownership
@@ -27,7 +27,8 @@ The app-data directory owns the serialized JWXT Cookie set in `jwxt-session.json
 - JWXT events use Rust `tracing` levels: successful session actions are `info`, response metadata is `debug`, and unexpected HTTP or business states are `warn`. Console filtering follows `RUST_LOG` and defaults to `debug`.
 - Official JWXT requests include the JWXT homepage Referer and a browser-compatible Accept/User-Agent header, matching the request context expected by the service.
 - For a JSON response, the JWXT business `code` is authoritative even if the service sends a nonstandard HTTP status (such as `600`). That status remains in diagnostics; malformed or HTML responses are still rejected.
-- Network requests occur only after the user selects “验证并查询课程”. The implementation does not run the numeric-score probing endpoint automatically.
+- Authentication verification occurs only after the user selects “验证会话”; it calls no grade endpoint. Grade queries occur only after the user selects a query method and then requests synchronization.
+- Supported query methods are the official score-check list and the official achievement search list. The UI requires an explicit user choice; unsupported numeric-score probing remains unavailable.
 - The feature is intentionally macOS-only. Windows/Linux behavior is not claimed or supported.
 
 ## Dependencies
@@ -49,5 +50,5 @@ CI=true pnpm tauri build --debug
 
 - Real login and request validation require an authorized student account and are not exercised by automated tests.
 - Numeric-score probing for grade-only records is deliberately not automatic; it requires a separate explicit action and rate-limited policy.
-- Reference-project inspection identifies other achievement endpoints (`score-check/getSortByYear`, `achievement/selfPageList`, and a graduation-course endpoint), but none is implemented as a substitute for the official list. Per-term list queries use the same `score-check/list` endpoint and share its server-side policy; other endpoint restrictions cannot be established without an authorized, non-bypass product requirement.
+- Per-term list queries use the same `score-check/list` endpoint and share its server-side policy. The separate `score-check/getSortByYear` statistics endpoint does not provide importable course records and is not exposed as a synchronization method. Numeric-score probing remains unavailable.
 - Exact session expiry and multi-factor behavior remain under the school's CAS policy.

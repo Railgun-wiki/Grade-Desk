@@ -86,13 +86,16 @@ fn save_jwxt_session(app: tauri::AppHandle) -> Result<jwxt::JwxtStatus, String> 
 }
 
 #[tauri::command]
-async fn verify_jwxt_session(app: tauri::AppHandle) -> Result<jwxt::GradeQueryResult, String> {
+async fn verify_jwxt_session(app: tauri::AppHandle) -> Result<jwxt::SessionVerification, String> {
     jwxt::verify_session(&app).await
 }
 
 #[tauri::command]
-async fn sync_jwxt_grades(app: tauri::AppHandle) -> Result<jwxt::GradeQueryResult, String> {
-    jwxt::sync_grades(&app).await
+async fn sync_jwxt_grades(
+    app: tauri::AppHandle,
+    method: jwxt::GradeQueryMethod,
+) -> Result<jwxt::GradeQueryResult, String> {
+    jwxt::sync_grades(&app, method).await
 }
 
 pub fn run() {
