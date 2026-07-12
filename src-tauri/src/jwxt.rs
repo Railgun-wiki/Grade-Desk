@@ -145,10 +145,25 @@ async fn get_json(
             body.len()
         ),
     );
+    let payload: Value = serde_json::from_str(&body).map_err(|error| {
+        format!(
+            "JWXT {operation} 未返回 JSON（{content_type}，{body_kind}，{} bytes）：{error}。详情已写入本地诊断日志。",
+            body.len()
+        )
+    })?;
     if !status.is_success() {
-        return Err(format!("JWXT {operation} 返回 HTTP {status}（{content_type}，{body_kind} 响应）。详情已写入本地诊断日志。"));
+        let business_code = payload
+            .get("code")
+            .map(Value::to_string)
+            .unwrap_or_else(|| "missing".to_owned());
+        write_diagnostic(
+            app,
+            &format!(
+                "{operation}: accepting non-success HTTP status={status}; json-code={business_code}"
+            ),
+        );
     }
-    serde_json::from_str(&body).map_err(|error| format!("JWXT {operation} 未返回 JSON（{content_type}，{body_kind}，{} bytes）：{error}。详情已写入本地诊断日志。", body.len()))
+    Ok(payload)
 }
 
 fn parse_grade(value: &Value) -> Option<RemoteGrade> {
