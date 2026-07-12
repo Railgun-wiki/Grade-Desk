@@ -7,6 +7,7 @@ use data::{
     ExportReceipt, SyncRun,
 };
 use serde::Serialize;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use tauri::Manager;
 
 #[derive(Serialize)]
