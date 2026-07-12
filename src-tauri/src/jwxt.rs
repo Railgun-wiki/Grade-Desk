@@ -1,5 +1,8 @@
 use crate::data::{self, RemoteGrade};
-use reqwest::{header::COOKIE, Client, Url};
+use reqwest::{
+    header::{ACCEPT, COOKIE, REFERER, USER_AGENT},
+    Client, Url,
+};
 use serde::Serialize;
 use serde_json::Value;
 use std::{fs, path::PathBuf};
@@ -112,6 +115,9 @@ async fn get_json(
     let response = client
         .get(url)
         .header(COOKIE, cookie)
+        .header(REFERER, format!("https://{JWXT_HOST}/"))
+        .header(ACCEPT, "application/json, text/plain, */*")
+        .header(USER_AGENT, "Mozilla/5.0 (Macintosh; ARM Mac OS X 15_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15")
         .send()
         .await
         .map_err(to_message)?;
@@ -123,7 +129,9 @@ async fn get_json(
         .unwrap_or("missing")
         .to_owned();
     let body = response.text().await.map_err(to_message)?;
-    let body_kind = if body.trim_start().starts_with('<') {
+    let body_kind = if body.contains("Access Forbidden") {
+        "access-forbidden"
+    } else if body.trim_start().starts_with('<') {
         "html"
     } else if body.trim_start().starts_with('{') || body.trim_start().starts_with('[') {
         "json-like"

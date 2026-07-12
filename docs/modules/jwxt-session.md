@@ -24,6 +24,7 @@ The app-data directory owns the serialized JWXT Cookie set in `jwxt-session.json
 - Tauri's macOS WebView Cookie API can include HttpOnly cookies. Cookies are persisted to a local app-data file with `0600` permission; reading happens from an explicit command rather than a page-load callback to avoid WebKit main-thread contention.
 - Cookie values are never returned to TypeScript, rendered, logged, exported, or inserted into SQLite.
 - HTTP diagnostics record only operation, status, Content-Type, response shape, and byte length in `jwxt-diagnostics.log`; they never record Cookie values or response bodies.
+- Official JWXT requests include the JWXT homepage Referer and a browser-compatible Accept/User-Agent header, matching the request context expected by the service.
 - Network requests occur only after the user selects “验证并查询课程”. The implementation does not run the numeric-score probing endpoint automatically.
 - The feature is intentionally macOS-only. Windows/Linux behavior is not claimed or supported.
 
