@@ -7,12 +7,28 @@ use serde::Serialize;
 use serde_json::Value;
 use std::{fs, path::PathBuf};
 use tauri::{webview::Cookie, AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tracing::{debug, info, warn};
 
 const JWXT_HOST: &str = "jwxt.sysu.edu.cn";
 const JWXT_LOGIN: &str = "https://jwxt.sysu.edu.cn/jwxt/api/sso/cas/login?pattern=student-login";
 const JWXT_PULL: &str = "https://jwxt.sysu.edu.cn/jwxt/achievement-manage/score-check/getPull";
 const SESSION_FILE: &str = "jwxt-session.json";
 const DIAGNOSTIC_LOG: &str = "jwxt-diagnostics.log";
+
+#[derive(Clone, Copy)]
+enum DiagnosticLevel {
+    Debug,
+    Warn,
+}
+
+impl DiagnosticLevel {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Debug => "DEBUG",
+            Self::Warn => "WARN",
+        }
+    }
+}
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -62,9 +78,10 @@ pub(crate) fn save_login_window_session(app: &AppHandle) -> Result<JwxtStatus, S
         .get_webview_window("jwxt-login")
         .ok_or_else(|| "未找到教务登录窗口。请先打开登录并完成认证。".to_owned())?;
     persist_window_cookies(app, &window)?;
+    info!("JWXT session persisted locally after explicit user action");
     Ok(JwxtStatus {
         connected: true,
-        message: "教务会话已保存到 macOS 钥匙串。".into(),
+        message: "教务会话已保存到本机。".into(),
     })
 }
 
@@ -138,8 +155,17 @@ async fn get_json(
     } else {
         "other"
     };
+    debug!(
+        operation,
+        %status,
+        content_type,
+        body_kind,
+        body_bytes = body.len(),
+        "JWXT response received"
+    );
     write_diagnostic(
         app,
+        DiagnosticLevel::Debug,
         &format!(
             "{operation}: status={status} content-type={content_type} body={body_kind} bytes={}",
             body.len()
@@ -156,8 +182,15 @@ async fn get_json(
             .get("code")
             .map(Value::to_string)
             .unwrap_or_else(|| "missing".to_owned());
+        warn!(
+            operation,
+            %status,
+            json_code = business_code.as_str(),
+            "accepting JSON response with non-success HTTP status"
+        );
         write_diagnostic(
             app,
+            DiagnosticLevel::Warn,
             &format!(
                 "{operation}: accepting non-success HTTP status={status}; json-code={business_code}"
             ),
@@ -277,15 +310,14 @@ fn session_file(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(directory.join(SESSION_FILE))
 }
 
-fn write_diagnostic(app: &AppHandle, message: &str) {
+fn write_diagnostic(app: &AppHandle, level: DiagnosticLevel, message: &str) {
     let Ok(directory) = app.path().app_data_dir() else {
         return;
     };
     if fs::create_dir_all(&directory).is_err() {
         return;
     }
-    let line = format!("{} {message}\n", chrono_free_timestamp());
-    eprintln!("[Grade Desk JWXT] {}", line.trim());
+    let line = format!("{} {} {message}\n", chrono_free_timestamp(), level.label());
     let path = directory.join(DIAGNOSTIC_LOG);
     let _ = fs::OpenOptions::new()
         .create(true)

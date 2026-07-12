@@ -24,6 +24,7 @@ The app-data directory owns the serialized JWXT Cookie set in `jwxt-session.json
 - Tauri's macOS WebView Cookie API can include HttpOnly cookies. Cookies are persisted to a local app-data file with `0600` permission; reading happens from an explicit command rather than a page-load callback to avoid WebKit main-thread contention.
 - Cookie values are never returned to TypeScript, rendered, logged, exported, or inserted into SQLite.
 - HTTP diagnostics record only operation, status, Content-Type, response shape, and byte length in `jwxt-diagnostics.log`; they never record Cookie values or response bodies.
+- JWXT events use Rust `tracing` levels: successful session actions are `info`, response metadata is `debug`, and unexpected HTTP or business states are `warn`. Console filtering follows `RUST_LOG` and defaults to `debug`.
 - Official JWXT requests include the JWXT homepage Referer and a browser-compatible Accept/User-Agent header, matching the request context expected by the service.
 - For a JSON response, the JWXT business `code` is authoritative even if the service sends a nonstandard HTTP status (such as `600`). That status remains in diagnostics; malformed or HTML responses are still rejected.
 - Network requests occur only after the user selects “验证并查询课程”. The implementation does not run the numeric-score probing endpoint automatically.
@@ -48,4 +49,5 @@ CI=true pnpm tauri build --debug
 
 - Real login and request validation require an authorized student account and are not exercised by automated tests.
 - Numeric-score probing for grade-only records is deliberately not automatic; it requires a separate explicit action and rate-limited policy.
+- Reference-project inspection identifies other achievement endpoints (`score-check/getSortByYear`, `achievement/selfPageList`, and a graduation-course endpoint), but none is implemented as a substitute for the official list. Per-term list queries use the same `score-check/list` endpoint and share its server-side policy; other endpoint restrictions cannot be established without an authorized, non-bypass product requirement.
 - Exact session expiry and multi-factor behavior remain under the school's CAS policy.

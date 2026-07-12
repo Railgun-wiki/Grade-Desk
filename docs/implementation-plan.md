@@ -14,6 +14,7 @@
 - [`docs/modules/grade-dashboard.md`](modules/grade-dashboard.md): read-only overview, transcript, and course detail interface.
 - [`docs/modules/archive-workflow.md`](modules/archive-workflow.md): local snapshots, review queue, controlled export, and deletion.
 - [`docs/modules/jwxt-session.md`](modules/jwxt-session.md): macOS controlled WebView, local session persistence, and official query verification.
+- [`docs/modules/logging.md`](modules/logging.md): Rust-side structured diagnostics and standard `RUST_LOG` filtering.
 
 ## Confirmed product direction
 

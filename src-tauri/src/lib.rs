@@ -1,5 +1,6 @@
 mod data;
 mod jwxt;
+mod logging;
 
 use data::{
     ArchiveResult, ChangeRecord, CourseAttempt, CourseDetail, Dashboard, ExportFormat,
@@ -95,6 +96,7 @@ async fn sync_jwxt_grades(app: tauri::AppHandle) -> Result<jwxt::GradeQueryResul
 }
 
 pub fn run() {
+    logging::init();
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             application_status,
