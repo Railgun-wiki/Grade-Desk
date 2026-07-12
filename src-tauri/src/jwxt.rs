@@ -9,6 +9,7 @@ const JWXT_HOST: &str = "jwxt.sysu.edu.cn";
 const JWXT_LOGIN: &str = "https://jwxt.sysu.edu.cn/jwxt/api/sso/cas/login?pattern=student-login";
 const JWXT_PULL: &str = "https://jwxt.sysu.edu.cn/jwxt/achievement-manage/score-check/getPull";
 const SESSION_FILE: &str = "jwxt-session.json";
+const DIAGNOSTIC_LOG: &str = "jwxt-diagnostics.log";
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -78,30 +79,14 @@ pub(crate) async fn sync_grades(app: &AppHandle) -> Result<GradeQueryResult, Str
 async fn fetch_grades(app: &AppHandle) -> Result<(Vec<RemoteGrade>, GradeQueryResult), String> {
     let header = load_cookie_header(app)?;
     let client = Client::new();
-    let pull: Value = client
-        .get(JWXT_PULL)
-        .header(COOKIE, header.clone())
-        .send()
-        .await
-        .map_err(to_message)?
-        .json()
-        .await
-        .map_err(to_message)?;
+    let pull = get_json(app, &client, JWXT_PULL, &header, "getPull").await?;
     ensure_success(&pull)?;
     let train_type = pull
         .pointer("/data/selectTrainType/0/dataNumber")
         .and_then(Value::as_str)
         .ok_or_else(|| "教务系统未返回培养类别。".to_owned())?;
     let url = format!("https://{JWXT_HOST}/jwxt/achievement-manage/score-check/list?trainTypeCode={train_type}&addScoreFlag=true");
-    let grades: Value = client
-        .get(url)
-        .header(COOKIE, header)
-        .send()
-        .await
-        .map_err(to_message)?
-        .json()
-        .await
-        .map_err(to_message)?;
+    let grades = get_json(app, &client, &url, &header, "score-check/list").await?;
     ensure_success(&grades)?;
     let records = grades
         .get("data")
@@ -115,6 +100,47 @@ async fn fetch_grades(app: &AppHandle) -> Result<(Vec<RemoteGrade>, GradeQueryRe
         train_type: train_type.to_owned(),
     };
     Ok((records, result))
+}
+
+async fn get_json(
+    app: &AppHandle,
+    client: &Client,
+    url: &str,
+    cookie: &str,
+    operation: &str,
+) -> Result<Value, String> {
+    let response = client
+        .get(url)
+        .header(COOKIE, cookie)
+        .send()
+        .await
+        .map_err(to_message)?;
+    let status = response.status();
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("missing")
+        .to_owned();
+    let body = response.text().await.map_err(to_message)?;
+    let body_kind = if body.trim_start().starts_with('<') {
+        "html"
+    } else if body.trim_start().starts_with('{') || body.trim_start().starts_with('[') {
+        "json-like"
+    } else {
+        "other"
+    };
+    write_diagnostic(
+        app,
+        &format!(
+            "{operation}: status={status} content-type={content_type} body={body_kind} bytes={}",
+            body.len()
+        ),
+    );
+    if !status.is_success() {
+        return Err(format!("JWXT {operation} 返回 HTTP {status}（{content_type}，{body_kind} 响应）。详情已写入本地诊断日志。"));
+    }
+    serde_json::from_str(&body).map_err(|error| format!("JWXT {operation} 未返回 JSON（{content_type}，{body_kind}，{} bytes）：{error}。详情已写入本地诊断日志。", body.len()))
 }
 
 fn parse_grade(value: &Value) -> Option<RemoteGrade> {
@@ -226,6 +252,34 @@ fn session_file(app: &AppHandle) -> Result<PathBuf, String> {
     let directory = app.path().app_data_dir().map_err(to_message)?;
     fs::create_dir_all(&directory).map_err(to_message)?;
     Ok(directory.join(SESSION_FILE))
+}
+
+fn write_diagnostic(app: &AppHandle, message: &str) {
+    let Ok(directory) = app.path().app_data_dir() else {
+        return;
+    };
+    if fs::create_dir_all(&directory).is_err() {
+        return;
+    }
+    let line = format!("{} {message}\n", chrono_free_timestamp());
+    eprintln!("[Grade Desk JWXT] {}", line.trim());
+    let path = directory.join(DIAGNOSTIC_LOG);
+    let _ = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .and_then(|mut file| std::io::Write::write_all(&mut file, line.as_bytes()));
+    let _ = restrict_file_permissions(&path);
+}
+
+fn chrono_free_timestamp() -> String {
+    format!(
+        "unix:{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    )
 }
 
 #[cfg(unix)]
