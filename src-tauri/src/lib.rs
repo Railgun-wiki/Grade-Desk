@@ -124,6 +124,7 @@ pub fn run() {
     logging::init();
     tauri::Builder::default()
         .setup(|app| {
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             if let Some(window) = app.get_webview_window("main") {
                 #[cfg(target_os = "macos")]
                 {
@@ -140,6 +141,8 @@ pub fn run() {
                     let _ = window.set_effects(effects);
                 }
             }
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            let _ = app;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
