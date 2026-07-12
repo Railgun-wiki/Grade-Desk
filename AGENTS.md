@@ -32,7 +32,7 @@ This directory is the independent workspace for the student grade-management des
 - Every implemented module must have its own Markdown document in `docs/modules/<module-name>.md` before or alongside its first code commit.
 - A module document must state: responsibility, public interfaces/commands, data ownership, security and privacy constraints, dependencies, verification commands, and known limitations.
 - Update the module document whenever its interface, data schema, behavior, or verification procedure changes. Include the documentation update in the same focused Conventional Commit as the module change.
-- Keep `docs/implementation-plan.md` as the cross-module roadmap; it must link to all module documents once they exist.
+- Keep `docs/developer-documentation.md` as the cross-module roadmap; it must link to all module documents once they exist.
 
 ## Current delivery state
 

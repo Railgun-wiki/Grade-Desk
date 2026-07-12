@@ -34,7 +34,7 @@ graph TD
 ├── .github/                 # GitHub Actions 工作流 (CI/Release)
 ├── docs/                    # 项目设计与模块文档
 │   ├── modules/             # 功能模块的独立文档 (包含设计细节、安全模型等)
-│   └── implementation-plan.md # 开发者文档 / 路线图与规范 (即本文件)
+│   └── developer-documentation.md # 开发者文档 / 路线图与规范 (即本文件)
 ├── src/                     # 前端 React 源码
 │   ├── main.tsx             # 应用入口及平台初始化逻辑
 │   └── styles.css           # 核心样式表 (包含多平台原生窗口适配)
@@ -59,7 +59,7 @@ graph TD
 
 #### 平台特有依赖 (编译 Tauri 必选)
 - **macOS**: Xcode Command Line Tools (`xcode-select --install`)
-- **Windows**: WebView2 运行时 (Windows 11 已内置)
+- **Windows**: WebView2 运行时 (Windows 11 已内置)。教务登录窗口必须经由异步 Tauri command 创建，以避免 WebView2 在同步窗口创建时死锁。
 - **Linux (Ubuntu/Debian)**:
   ```bash
   sudo apt-get update

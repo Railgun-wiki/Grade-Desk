@@ -106,7 +106,11 @@ pub(crate) fn status(app: &AppHandle) -> JwxtStatus {
     }
 }
 
-pub(crate) fn start_login(app: &AppHandle) -> Result<(), String> {
+/// Opens the login window from Tauri's asynchronous command path.
+///
+/// WebView2 can deadlock when a `WebviewWindow` is created by a synchronous
+/// command on Windows, so callers must await this function.
+pub(crate) async fn start_login(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("jwxt-login") {
         window.show().map_err(to_message)?;
         window.set_focus().map_err(to_message)?;

@@ -86,8 +86,8 @@ fn jwxt_status(app: tauri::AppHandle) -> jwxt::JwxtStatus {
 }
 
 #[tauri::command]
-fn start_jwxt_login(app: tauri::AppHandle) -> Result<(), String> {
-    jwxt::start_login(&app)
+async fn start_jwxt_login(app: tauri::AppHandle) -> Result<(), String> {
+    jwxt::start_login(&app).await
 }
 
 #[tauri::command]
