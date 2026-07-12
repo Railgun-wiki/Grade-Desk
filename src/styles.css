@@ -7,14 +7,7 @@ h1, h2, h3, p { margin-top: 0; } h1, h2 { font-family: "SF Pro Display", -apple-
 .primary-button { min-height: 36px; padding: 8px 16px; border: 0; border-radius: 9999px; background: #0066cc; color: #fff; font-size: 14px; }
 .primary-button:disabled { opacity: .55; cursor: not-allowed; }
 
-.sidebar { grid-column: 1; grid-row: 1 / -1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid rgba(0,0,0,.1); background: transparent; height: 100dvh; }
-.traffic-lights { display: flex; gap: 8px; padding: 20px 20px 12px; align-items: center; user-select: none; }
-.traffic-light { width: 12px; height: 12px; border-radius: 50%; border: none; padding: 0; display: flex; align-items: center; justify-content: center; cursor: default; position: relative; transition: all 0.2s cubic-bezier(0.4, 0, 0.25, 1); }
-.traffic-light.close { background: #ff5f56; border: 0.5px solid #e0443e; }
-.traffic-light.minimize { background: #ffbd2e; border: 0.5px solid #dea123; }
-.traffic-light.maximize { background: #27c93f; border: 0.5px solid #1aab29; }
-.traffic-light span { font-size: 9px; font-weight: 700; color: rgba(0, 0, 0, 0.55); opacity: 0; transition: opacity 0.15s cubic-bezier(0.4, 0, 0.25, 1); line-height: 1; user-select: none; }
-.traffic-lights:hover .traffic-light span { opacity: 1; }
+.sidebar { grid-column: 1; grid-row: 1 / -1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid rgba(0,0,0,.1); background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); height: 100dvh; padding-top: 40px; }
 
 .nav-items-group { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding: 12px; }
 .sidebar-footer { padding: 16px 20px 24px; border-top: 1px solid rgba(0, 0, 0, 0.05); display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: #6e6e73; }
@@ -213,3 +206,66 @@ dd { margin: 0; text-align: right; }
   .run-row time { grid-column: 1 / -1; } 
   .notice { top: 104px; right: 16px; max-width: calc(100vw - 32px); } 
 }
+
+/* 视图元素加载 staggered 非线性动画 */
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 概览视图动画 */
+.overview-page .welcome {
+  animation: slideUpFade 0.45s cubic-bezier(0.25, 1, 0.5, 1) both;
+}
+.overview-page .metric-grid > .metric:nth-child(1) {
+  animation: slideUpFade 0.45s cubic-bezier(0.25, 1, 0.5, 1) 0.04s both;
+}
+.overview-page .metric-grid > .metric:nth-child(2) {
+  animation: slideUpFade 0.45s cubic-bezier(0.25, 1, 0.5, 1) 0.08s both;
+}
+.overview-page .metric-grid > .metric:nth-child(3) {
+  animation: slideUpFade 0.45s cubic-bezier(0.25, 1, 0.5, 1) 0.12s both;
+}
+.overview-page .two-column > .section-card {
+  animation: slideUpFade 0.5s cubic-bezier(0.25, 1, 0.5, 1) 0.16s both;
+}
+.overview-page .two-column > .dark-card {
+  animation: slideUpFade 0.5s cubic-bezier(0.25, 1, 0.5, 1) 0.2s both;
+}
+
+/* 成绩单视图动画 */
+.page-heading {
+  animation: slideUpFade 0.45s cubic-bezier(0.25, 1, 0.5, 1) both;
+}
+.search {
+  animation: slideUpFade 0.45s cubic-bezier(0.25, 1, 0.5, 1) 0.04s both;
+}
+.table-card {
+  animation: slideUpFade 0.5s cubic-bezier(0.25, 1, 0.5, 1) 0.08s both;
+}
+
+/* 归档视图动画 */
+.archive-grid > section:nth-child(1) {
+  animation: slideUpFade 0.45s cubic-bezier(0.25, 1, 0.5, 1) both;
+}
+.archive-grid > section:nth-child(2) {
+  animation: slideUpFade 0.45s cubic-bezier(0.25, 1, 0.5, 1) 0.05s both;
+}
+.archive-table {
+  animation: slideUpFade 0.5s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both;
+}
+
+/* 连接教务视图动画 */
+.connection-card {
+  animation: slideUpFade 0.45s cubic-bezier(0.25, 1, 0.5, 1) both;
+}
+.connection-card .rank-summary {
+  animation: slideUpFade 0.45s cubic-bezier(0.25, 1, 0.5, 1) 0.08s both;
+}
+

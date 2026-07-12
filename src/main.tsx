@@ -1,53 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
-
-let appWindow: any = null;
-try {
-  appWindow = getCurrentWindow();
-} catch (e) {
-  console.warn("Not running in Tauri environment:", e);
-}
-
-function TrafficLights() {
-  const handleClose = () => {
-    if (appWindow) {
-      void appWindow.close();
-    } else {
-      console.log("Window Close requested");
-    }
-  };
-  const handleMinimize = () => {
-    if (appWindow) {
-      void appWindow.minimize();
-    } else {
-      console.log("Window Minimize requested");
-    }
-  };
-  const handleMaximize = () => {
-    if (appWindow) {
-      void appWindow.toggleMaximize();
-    } else {
-      console.log("Window Maximize requested");
-    }
-  };
-
-  return (
-    <div className="traffic-lights" data-tauri-drag-region>
-      <button className="traffic-light close" onClick={handleClose} aria-label="关闭" type="button">
-        <span>×</span>
-      </button>
-      <button className="traffic-light minimize" onClick={handleMinimize} aria-label="最小化" type="button">
-        <span>−</span>
-      </button>
-      <button className="traffic-light maximize" onClick={handleMaximize} aria-label="最大化" type="button">
-        <span>+</span>
-      </button>
-    </div>
-  );
-}
 
 type AppStatus = {
   name: string;
@@ -214,7 +168,6 @@ function App() {
         <button className="primary-button" type="button" onClick={() => void createArchive()}>创建快照</button>
       </header>
       <aside className="sidebar" aria-label="主导航" data-tauri-drag-region>
-        <TrafficLights />
         <div className="nav-items-group">
           <button className={activeView === "overview" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("overview")} type="button">概览</button>
           <button className={activeView === "transcript" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("transcript")} type="button">成绩单</button>
