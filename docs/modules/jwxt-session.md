@@ -30,7 +30,7 @@ The app-data directory owns the serialized JWXT Cookie set in `jwxt-session.json
 - For a JSON response, the JWXT business `code` is authoritative even if the service sends a nonstandard HTTP status (such as `600`). That status remains in diagnostics; malformed or HTML responses are still rejected.
 - Authentication verification occurs only after the user selects “验证会话”; it calls no grade endpoint. Grade queries occur only after the user selects a query method and then requests synchronization.
 - Supported grade-list query methods are the official score-check list and the official achievement search list. The UI requires an explicit user choice.
-- Numeric-score probing is never run during login, verification, synchronization, or page load. It requires an explicit foreground confirmation for one selected course, makes bounded sequential requests, and only persists a score when the official endpoint confirms it.
+- Numeric-score probing is never run during login, verification, synchronization, or page load. It requires two explicit in-app actions for one selected course, makes bounded sequential requests, and only persists a score when the official endpoint confirms it.
 - Numeric-score probing writes a lifecycle diagnostic before local validation, then records each pre-request, request, response, persistence, or no-result failure without including course identifiers, grades, scores, Cookies, or response bodies.
 - The feature is intentionally macOS-only. Windows/Linux behavior is not claimed or supported.
 
