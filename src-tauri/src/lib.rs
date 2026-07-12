@@ -106,6 +106,11 @@ async fn probe_jwxt_numeric_score(
     jwxt::probe_numeric_score(&app, attempt_id).await
 }
 
+#[tauri::command]
+async fn query_jwxt_rank_summary(app: tauri::AppHandle) -> Result<jwxt::RankSummary, String> {
+    jwxt::query_rank_summary(&app).await
+}
+
 pub fn run() {
     logging::init();
     tauri::Builder::default()
@@ -125,7 +130,8 @@ pub fn run() {
             save_jwxt_session,
             verify_jwxt_session,
             sync_jwxt_grades,
-            probe_jwxt_numeric_score
+            probe_jwxt_numeric_score,
+            query_jwxt_rank_summary
         ])
         .run(tauri::generate_context!())
         .expect("error while running Grade Desk");

@@ -13,6 +13,8 @@ const JWXT_HOST: &str = "jwxt.sysu.edu.cn";
 const JWXT_LOGIN: &str = "https://jwxt.sysu.edu.cn/jwxt/api/sso/cas/login?pattern=student-login";
 const JWXT_PULL: &str = "https://jwxt.sysu.edu.cn/jwxt/achievement-manage/score-check/getPull";
 const JWXT_SCORE_LIST: &str = "https://jwxt.sysu.edu.cn/jwxt/achievement-manage/score-check/list";
+const JWXT_RANK_SUMMARY: &str =
+    "https://jwxt.sysu.edu.cn/jwxt/achievement-manage/score-check/getSortByYear";
 const JWXT_ACHIEVEMENT_SEARCH: &str =
     "https://jwxt.sysu.edu.cn/jwxt/achievement-manage/achievement/selfPageList";
 const JWXT_NUMERIC_PROBE: &str = "https://jwxt.sysu.edu.cn/jwxt/gradua-degree/graduatemsg/studentsGraduationExamination/studentCourse";
@@ -77,6 +79,18 @@ pub(crate) struct SessionVerification {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct NumericProbeResult {
     pub(crate) numeric_score: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RankSummary {
+    pub(crate) train_type: String,
+    pub(crate) total_rank: Option<String>,
+    pub(crate) term_rank: Option<String>,
+    pub(crate) total_students: Option<String>,
+    pub(crate) cumulative_gpa: Option<String>,
+    pub(crate) term_gpa: Option<String>,
+    pub(crate) earned_credits: Option<String>,
 }
 
 pub(crate) fn status(app: &AppHandle) -> JwxtStatus {
@@ -196,6 +210,22 @@ pub(crate) async fn probe_numeric_score(
         "numeric-score-probe/result",
         "教务未确认该课程的数值成绩；未修改本地记录。".into(),
     ))
+}
+
+pub(crate) async fn query_rank_summary(app: &AppHandle) -> Result<RankSummary, String> {
+    let header = load_cookie_header(app)?;
+    let client = Client::new();
+    let train_type = fetch_train_type(app).await?;
+    info!("JWXT rank summary requested by user");
+    let url = format!("{JWXT_RANK_SUMMARY}?trainTypeCode={train_type}&addScoreFlag=true");
+    let response = get_json(
+        app,
+        jwxt_get(&client, &url, &header),
+        "score-check/getSortByYear",
+    )
+    .await?;
+    ensure_success(&response)?;
+    parse_rank_summary(&response, train_type)
 }
 
 async fn fetch_train_type(app: &AppHandle) -> Result<String, String> {
@@ -496,6 +526,39 @@ fn value_to_number(value: &Value) -> Option<f64> {
         .or_else(|| value.as_str().and_then(|number| number.parse().ok()))
 }
 
+fn parse_rank_summary(response: &Value, train_type: String) -> Result<RankSummary, String> {
+    let data = response
+        .get("data")
+        .ok_or_else(|| "教务系统未返回排名统计。".to_owned())?;
+    let total = data
+        .get("compulsorySelectTotal")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first());
+    let term = data
+        .get("compulsorySelectList")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first());
+    Ok(RankSummary {
+        train_type,
+        total_rank: total
+            .and_then(|item| item.get("rank"))
+            .and_then(value_to_text),
+        term_rank: term
+            .and_then(|item| item.get("rank"))
+            .and_then(value_to_text),
+        total_students: data.get("stuTotal").and_then(value_to_text),
+        cumulative_gpa: total
+            .and_then(|item| item.get("vegPoint"))
+            .and_then(value_to_text),
+        term_gpa: term
+            .and_then(|item| item.get("vegPoint"))
+            .and_then(value_to_text),
+        earned_credits: total
+            .and_then(|item| item.get("totalCredit"))
+            .and_then(value_to_text),
+    })
+}
+
 fn persist_window_cookies(app: &AppHandle, window: &tauri::WebviewWindow) -> Result<(), String> {
     let url: Url = format!("https://{JWXT_HOST}/")
         .parse()
@@ -645,5 +708,20 @@ mod tests {
             (60..=84).rev().collect::<Vec<_>>()
         );
         assert!(super::numeric_score_candidates("合格").is_err());
+    }
+
+    #[test]
+    fn parses_rank_summary() {
+        let response = serde_json::json!({
+            "data": {
+                "compulsorySelectTotal": [{"rank": "12", "vegPoint": "3.82", "totalCredit": "90"}],
+                "compulsorySelectList": [{"rank": "4", "vegPoint": "3.95"}],
+                "stuTotal": "100"
+            }
+        });
+        let summary = super::parse_rank_summary(&response, "01".into()).unwrap();
+        assert_eq!(summary.total_rank.as_deref(), Some("12"));
+        assert_eq!(summary.term_rank.as_deref(), Some("4"));
+        assert_eq!(summary.cumulative_gpa.as_deref(), Some("3.82"));
     }
 }
