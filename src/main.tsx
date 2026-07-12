@@ -12,7 +12,8 @@ type AppStatus = {
 type Dashboard = {
   profileName: string;
   currentTerm: string;
-  cumulativeGpa: number;
+  allGpa: number;
+  professionalGpa: number;
   earnedCredits: number;
   courseCount: number;
   lastSyncedAt: string;
@@ -45,7 +46,7 @@ type NumericProbeResult = { numericScore: number };
 type RankSummary = { trainType: string; totalRank: string | null; termRank: string | null; totalStudents: string | null; cumulativeGpa: string | null; termGpa: string | null; earnedCredits: string | null };
 
 const previewDashboard: Dashboard = {
-  profileName: "示例同学", currentTerm: "2025-2026 第1学期", cumulativeGpa: 3.78,
+  profileName: "示例同学", currentTerm: "2025-2026 第1学期", allGpa: 3.78, professionalGpa: 3.74,
   earnedCredits: 13, courseCount: 4, lastSyncedAt: "2026-07-12T00:00:00Z",
 };
 const previewAttempts: CourseAttempt[] = [
@@ -189,9 +190,9 @@ function Overview({ dashboard, attempts, onTranscript }: { dashboard: Dashboard;
       <p>这是一份只属于你的本地学业记录。</p>
     </section>
     <section className="metric-grid" aria-label="成绩摘要">
-      <Metric label="累计 GPA" value={dashboard.cumulativeGpa.toFixed(2)} note="本地计算" />
+      <Metric label="全部 GPA" value={dashboard.allGpa.toFixed(2)} note="排除 P / NP" />
+      <Metric label="专业课 GPA" value={dashboard.professionalGpa.toFixed(2)} note="专必 · 专选 · 公必" />
       <Metric label="已获学分" value={dashboard.earnedCredits.toFixed(0)} note="全部通过课程" />
-      <Metric label="已归档课程" value={String(dashboard.courseCount)} note="当前学期" />
     </section>
     <section className="two-column">
       <div className="section-card"><div className="section-heading"><div><p className="eyebrow">本学期</p><h2>课程表现</h2></div><button className="text-button" onClick={onTranscript} type="button">查看成绩单</button></div>

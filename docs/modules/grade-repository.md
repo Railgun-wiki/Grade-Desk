@@ -8,7 +8,7 @@ Own the local SQLite database for Grade Desk. It creates the version-1 schema, s
 
 | Interface | Owner | Contract |
 |---|---|---|
-| `get_dashboard` | Rust/Tauri command | Opens the app-data SQLite database, applies idempotent schema setup, seeds only an empty database, and returns one typed summary. |
+| `get_dashboard` | Rust/Tauri command | Opens the app-data SQLite database, applies idempotent schema setup, seeds only an empty database, and returns typed all-course and professional-course GPA summaries. |
 | `list_course_attempts` | Rust/Tauri command | Returns typed read-only course attempts ordered by course code. |
 | `get_course_detail(attemptId)` | Rust/Tauri command | Returns one typed attempt with term, class number, and score components. |
 | `numeric_probe_target(attemptId)` | Rust repository interface | Returns the minimum local course-number and official-grade metadata required for an explicitly requested remote probe; it never returns cookies or credentials. |
@@ -26,6 +26,7 @@ The module owns `profiles`, `terms`, `courses`, `course_attempts`, and `score_co
 - Connections enable foreign keys and WAL mode. All seed writes run in one transaction.
 - Errors identify only the local repository operation; they do not expose query parameters or data payloads.
 - A remotely verified numeric score is distinct from an inferred conversion: it is saved only as `official_numeric`; absent confirmation leaves the official grade intact.
+- GPA aggregation excludes `P` and `NP` from both the weighted-grade-point numerator and the credit denominator. Professional-course GPA includes only `专业必修`, `专业选修`, and `公共必修`; it excludes `公共选修` and other categories.
 
 ## Dependencies
 

@@ -15,7 +15,8 @@ const SCHEMA_VERSION: i32 = 2;
 pub(crate) struct Dashboard {
     pub(crate) profile_name: String,
     pub(crate) current_term: String,
-    pub(crate) cumulative_gpa: f64,
+    pub(crate) all_gpa: f64,
+    pub(crate) professional_gpa: f64,
     pub(crate) earned_credits: f64,
     pub(crate) course_count: i64,
     pub(crate) last_synced_at: String,
@@ -486,7 +487,16 @@ fn dashboard_from(connection: &Connection) -> SqlResult<Dashboard> {
             COALESCE((SELECT academic_year || ' 第' || semester || '学期' FROM terms WHERE profile_id = p.id ORDER BY id DESC LIMIT 1), '暂无学期'),
             COALESCE(SUM(CASE WHEN a.passed = 1 THEN a.credit ELSE 0 END), 0),
             COUNT(a.id),
-            COALESCE(SUM(a.grade_point * a.credit) / NULLIF(SUM(a.credit), 0), 0),
+            COALESCE(
+                SUM(CASE WHEN a.grade_point IS NOT NULL AND UPPER(TRIM(COALESCE(a.official_grade, ''))) NOT IN ('P', 'NP') THEN a.grade_point * a.credit ELSE 0 END)
+                / NULLIF(SUM(CASE WHEN a.grade_point IS NOT NULL AND UPPER(TRIM(COALESCE(a.official_grade, ''))) NOT IN ('P', 'NP') THEN a.credit ELSE 0 END), 0),
+                0
+            ),
+            COALESCE(
+                SUM(CASE WHEN a.grade_point IS NOT NULL AND c.category IN ('专业必修', '专业选修', '公共必修') AND UPPER(TRIM(COALESCE(a.official_grade, ''))) NOT IN ('P', 'NP') THEN a.grade_point * a.credit ELSE 0 END)
+                / NULLIF(SUM(CASE WHEN a.grade_point IS NOT NULL AND c.category IN ('专业必修', '专业选修', '公共必修') AND UPPER(TRIM(COALESCE(a.official_grade, ''))) NOT IN ('P', 'NP') THEN a.credit ELSE 0 END), 0),
+                0
+            ),
             COALESCE((SELECT finished_at FROM sync_runs WHERE profile_id = p.id AND status = 'completed' ORDER BY id DESC LIMIT 1), '')
         FROM profiles p
         LEFT JOIN courses c ON c.profile_id = p.id
@@ -502,8 +512,9 @@ fn dashboard_from(connection: &Connection) -> SqlResult<Dashboard> {
                 current_term: row.get(1)?,
                 earned_credits: row.get(2)?,
                 course_count: row.get(3)?,
-                cumulative_gpa: row.get(4)?,
-                last_synced_at: row.get(5)?,
+                all_gpa: row.get(4)?,
+                professional_gpa: row.get(5)?,
+                last_synced_at: row.get(6)?,
             })
         },
     )
@@ -773,15 +784,32 @@ mod tests {
         assert_eq!(dashboard.profile_name, "示例同学");
         assert_eq!(dashboard.course_count, 4);
         assert_eq!(dashboard.earned_credits, 13.0);
-        assert!((dashboard.cumulative_gpa - 3.78).abs() < 0.01);
+        assert!((dashboard.all_gpa - 3.78).abs() < 0.01);
+        assert!((dashboard.professional_gpa - 3.74).abs() < 0.01);
+
+        connection
+            .execute(
+                "INSERT INTO courses (id, profile_id, course_code, name, category) VALUES (5, 1, 'PN101', '通过制课程', '专业必修')",
+                [],
+            )
+            .expect("add pass-no-pass course");
+        connection
+            .execute(
+                "INSERT INTO course_attempts (id, course_id, term_id, class_number, official_grade, numeric_score, score_kind, grade_point, credit, passed, recorded_at) VALUES (5, 5, 1, 'PN101-01', 'P', NULL, 'official_grade', 4.0, 3.0, 1, '2026-07-12T00:00:00Z')",
+                [],
+            )
+            .expect("add pass-no-pass attempt");
+        let without_pass_no_pass = dashboard_from(&connection).expect("recalculate dashboard");
+        assert!((without_pass_no_pass.all_gpa - 3.78).abs() < 0.01);
+        assert!((without_pass_no_pass.professional_gpa - 3.74).abs() < 0.01);
 
         let attempts = attempts_from(&connection).expect("load attempts");
-        assert_eq!(attempts.len(), 4);
+        assert_eq!(attempts.len(), 5);
         let detail = course_detail_from(&connection, 1).expect("load course detail");
         assert_eq!(detail.components.len(), 3);
 
         let initial_archive = archive_from(&mut connection).expect("archive current data");
-        assert_eq!(initial_archive.snapshot_count, 4);
+        assert_eq!(initial_archive.snapshot_count, 5);
         assert_eq!(initial_archive.changes_detected, 0);
 
         connection
@@ -798,6 +826,6 @@ mod tests {
                 .len(),
             1
         );
-        assert_eq!(export_csv(&attempts).lines().count(), 5);
+        assert_eq!(export_csv(&attempts).lines().count(), 6);
     }
 }

@@ -8,7 +8,7 @@ Render the local, read-only grade experience: cumulative overview, searchable tr
 
 | Interface | Owner | Contract |
 |---|---|---|
-| `get_dashboard` | Rust repository command | Supplies the overview metrics and local archive timestamp. |
+| `get_dashboard` | Rust repository command | Supplies all-course GPA, professional-course GPA, earned credits, and the local archive timestamp. |
 | `list_course_attempts` | Rust repository command | Supplies the flattened, read-only transcript list. |
 | `get_course_detail(attemptId)` | Rust repository command | Supplies one attempt, its academic term, class number, and available score components. |
 | Overview / transcript navigation | React state | Changes only the displayed local view; it does not mutate data. |
@@ -22,6 +22,7 @@ The module owns no data. It reads typed records from the grade repository and us
 - No direct HTTP, filesystem, credential, cookie, or SQL access exists in the frontend.
 - The browser-preview fallback is anonymous seeded data only; a real Tauri command supersedes it when available.
 - Numeric scores are labelled `教务数值`; grade-only records remain `官方等级` and are not converted into guessed scores.
+- GPA cards label their scope explicitly. `P`/`NP` records are excluded from both GPA formulas rather than treated as zero points or zero-credit grades.
 
 ## Design system translation
 
