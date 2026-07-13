@@ -1,14 +1,13 @@
 mod data;
 mod jwxt;
 mod logging;
+mod platform;
 
 use data::{
     AnalysisOverview, ArchiveResult, ChangeRecord, CourseAttempt, CourseDetail, Dashboard,
     ExportFormat, ExportReceipt, SyncRun, TermOption,
 };
 use serde::Serialize;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-use tauri::Manager;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,13 +24,7 @@ fn application_status() -> AppStatus {
         name: "Grade Desk",
         version: env!("CARGO_PKG_VERSION"),
         storage_mode: "local-only",
-        os: if cfg!(target_os = "macos") {
-            "macos"
-        } else if cfg!(target_os = "windows") {
-            "windows"
-        } else {
-            "linux"
-        },
+        os: platform::Platform::current().as_str(),
     }
 }
 
@@ -131,29 +124,12 @@ async fn query_jwxt_rank_summary(app: tauri::AppHandle) -> Result<jwxt::RankSumm
     jwxt::query_rank_summary(&app).await
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logging::init();
     tauri::Builder::default()
         .setup(|app| {
-            #[cfg(any(target_os = "macos", target_os = "windows"))]
-            if let Some(window) = app.get_webview_window("main") {
-                #[cfg(target_os = "macos")]
-                {
-                    let effects = tauri::window::EffectsBuilder::new()
-                        .effects(vec![tauri::window::Effect::Sidebar])
-                        .build();
-                    let _ = window.set_effects(effects);
-                }
-                #[cfg(target_os = "windows")]
-                {
-                    let effects = tauri::window::EffectsBuilder::new()
-                        .effects(vec![tauri::window::Effect::Mica])
-                        .build();
-                    let _ = window.set_effects(effects);
-                }
-            }
-            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-            let _ = app;
+            platform::current().configure_app(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -179,4 +155,14 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Grade Desk");
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn application_status_reports_the_current_platform() {
+        let status = super::application_status();
+        assert_eq!(status.os, crate::platform::Platform::current().as_str());
+        assert_eq!(status.storage_mode, "local-only");
+    }
 }

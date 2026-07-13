@@ -1,4 +1,7 @@
-use crate::data::{self, RemoteGrade};
+use crate::{
+    data::{self, RemoteGrade},
+    platform::{self, PlatformService},
+};
 use reqwest::{
     header::{ACCEPT, COOKIE, REFERER, USER_AGENT},
     Client, RequestBuilder, Url,
@@ -6,7 +9,9 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fs, path::PathBuf};
-use tauri::{webview::Cookie, AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{webview::Cookie, AppHandle};
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use tracing::{debug, info, warn};
 
 const JWXT_HOST: &str = "jwxt.sysu.edu.cn";
@@ -20,8 +25,6 @@ const JWXT_ACHIEVEMENT_SEARCH: &str =
 const JWXT_NUMERIC_PROBE: &str = "https://jwxt.sysu.edu.cn/jwxt/gradua-degree/graduatemsg/studentsGraduationExamination/studentCourse";
 const SESSION_FILE: &str = "jwxt-session.json";
 const DIAGNOSTIC_LOG: &str = "jwxt-diagnostics.log";
-#[cfg(windows)]
-const DPAPI_SESSION_PREFIX: &[u8] = b"GRADE_DESK_DPAPI_V1\0";
 
 #[derive(Clone, Copy)]
 enum DiagnosticLevel {
@@ -71,6 +74,11 @@ impl GradeQueryMethod {
     }
 }
 
+fn ensure_jwxt_session_supported(service: &dyn PlatformService) -> Result<(), String> {
+    service.ensure_jwxt_login_window_supported()?;
+    service.ensure_file_session_storage_supported()
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SessionVerification {
@@ -113,6 +121,15 @@ pub(crate) fn status(app: &AppHandle) -> JwxtStatus {
 /// WebView2 can deadlock when a `WebviewWindow` is created by a synchronous
 /// command on Windows, so callers must await this function.
 pub(crate) async fn start_login(app: &AppHandle) -> Result<(), String> {
+    ensure_jwxt_session_supported(platform::current())?;
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    return start_login_on_desktop(app);
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    unreachable!("mobile platform support is rejected before opening a JWXT login window")
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+fn start_login_on_desktop(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("jwxt-login") {
         window.show().map_err(to_message)?;
         window.set_focus().map_err(to_message)?;
@@ -130,6 +147,15 @@ pub(crate) async fn start_login(app: &AppHandle) -> Result<(), String> {
 
 /// Persists authenticated WebView cookies without blocking the WebView2 UI thread.
 pub(crate) async fn save_login_window_session(app: &AppHandle) -> Result<JwxtStatus, String> {
+    ensure_jwxt_session_supported(platform::current())?;
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    return save_login_window_session_on_desktop(app).await;
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    unreachable!("mobile platform support is rejected before reading JWXT cookies")
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+async fn save_login_window_session_on_desktop(app: &AppHandle) -> Result<JwxtStatus, String> {
     let window = app
         .get_webview_window("jwxt-login")
         .ok_or_else(|| "未找到教务登录窗口。请先打开登录并完成认证。".to_owned())?;
@@ -148,6 +174,7 @@ pub(crate) async fn save_login_window_session(app: &AppHandle) -> Result<JwxtSta
 }
 
 pub(crate) async fn verify_session(app: &AppHandle) -> Result<SessionVerification, String> {
+    ensure_jwxt_session_supported(platform::current())?;
     let train_type = fetch_train_type(app).await?;
     info!(train_type, "JWXT session verification succeeded");
     Ok(SessionVerification { train_type })
@@ -157,6 +184,7 @@ pub(crate) async fn sync_grades(
     app: &AppHandle,
     method: GradeQueryMethod,
 ) -> Result<GradeQueryResult, String> {
+    ensure_jwxt_session_supported(platform::current())?;
     info!(
         method = method.label(),
         "JWXT grade query requested by user"
@@ -170,6 +198,7 @@ pub(crate) async fn probe_numeric_score(
     app: &AppHandle,
     attempt_id: i64,
 ) -> Result<NumericProbeResult, String> {
+    ensure_jwxt_session_supported(platform::current())?;
     info!("JWXT numeric-score probe started");
     write_diagnostic(app, DiagnosticLevel::Info, "numeric-score-probe: started");
     let target = data::numeric_probe_target(app, attempt_id)
@@ -226,6 +255,7 @@ pub(crate) async fn probe_numeric_score(
 }
 
 pub(crate) async fn query_rank_summary(app: &AppHandle) -> Result<RankSummary, String> {
+    ensure_jwxt_session_supported(platform::current())?;
     let header = load_cookie_header(app)?;
     let client = Client::new();
     let train_type = fetch_train_type(app).await?;
@@ -572,6 +602,7 @@ fn parse_rank_summary(response: &Value, train_type: String) -> Result<RankSummar
     })
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 fn persist_window_cookies(app: &AppHandle, window: &tauri::WebviewWindow) -> Result<(), String> {
     let url: Url = format!("https://{JWXT_HOST}/")
         .parse()
@@ -598,16 +629,21 @@ fn persist_window_cookies(app: &AppHandle, window: &tauri::WebviewWindow) -> Res
         .collect();
     let path = session_file(app)?;
     let payload = serde_json::to_vec(&serialized).map_err(to_message)?;
-    fs::write(&path, protect_session_payload(&payload)?).map_err(to_message)?;
-    restrict_file_permissions(&path)?;
+    let service = platform::current();
+    service.ensure_file_session_storage_supported()?;
+    fs::write(&path, service.protect_session_payload(&payload)?).map_err(to_message)?;
+    service.restrict_session_file_permissions(&path)?;
     Ok(())
 }
 
 fn load_cookie_header(app: &AppHandle) -> Result<String, String> {
+    let service = platform::current();
+    service.ensure_file_session_storage_supported()?;
     let encoded = fs::read(session_file(app)?)
         .map_err(|_| "尚未保存教务会话，请先在应用内完成登录。".to_owned())?;
     let cookies: Vec<String> =
-        serde_json::from_slice(&unprotect_session_payload(&encoded)?).map_err(to_message)?;
+        serde_json::from_slice(&service.unprotect_session_payload(&encoded)?)
+            .map_err(to_message)?;
     let pairs = cookies
         .into_iter()
         .filter_map(|raw| {
@@ -643,7 +679,7 @@ fn write_diagnostic(app: &AppHandle, level: DiagnosticLevel, message: &str) {
         .append(true)
         .open(&path)
         .and_then(|mut file| std::io::Write::write_all(&mut file, line.as_bytes()));
-    let _ = restrict_file_permissions(&path);
+    let _ = platform::current().restrict_session_file_permissions(&path);
 }
 
 fn probe_failure(app: &AppHandle, stage: &str, error: String) -> String {
@@ -670,111 +706,6 @@ fn chrono_free_timestamp() -> String {
     )
 }
 
-#[cfg(unix)]
-fn restrict_file_permissions(path: &PathBuf) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o600)).map_err(to_message)
-}
-
-#[cfg(not(unix))]
-fn restrict_file_permissions(_: &PathBuf) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(not(windows))]
-fn protect_session_payload(payload: &[u8]) -> Result<Vec<u8>, String> {
-    Ok(payload.to_vec())
-}
-
-#[cfg(not(windows))]
-fn unprotect_session_payload(payload: &[u8]) -> Result<Vec<u8>, String> {
-    Ok(payload.to_vec())
-}
-
-#[cfg(windows)]
-fn protect_session_payload(payload: &[u8]) -> Result<Vec<u8>, String> {
-    use std::{ffi::c_void, ptr};
-    use windows_sys::Win32::{
-        Foundation::LocalFree,
-        Security::Cryptography::{CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB},
-    };
-
-    let mut input = CRYPT_INTEGER_BLOB {
-        cbData: payload.len().try_into().map_err(to_message)?,
-        pbData: payload.as_ptr() as *mut u8,
-    };
-    let mut encrypted = CRYPT_INTEGER_BLOB {
-        cbData: 0,
-        pbData: ptr::null_mut(),
-    };
-    let protected = unsafe {
-        CryptProtectData(
-            &mut input,
-            ptr::null(),
-            ptr::null(),
-            ptr::null::<c_void>(),
-            ptr::null(),
-            CRYPTPROTECT_UI_FORBIDDEN,
-            &mut encrypted,
-        )
-    };
-    if protected == 0 {
-        return Err("无法使用 Windows DPAPI 加密教务会话。".into());
-    }
-    let encrypted_bytes =
-        unsafe { std::slice::from_raw_parts(encrypted.pbData, encrypted.cbData as usize).to_vec() };
-    unsafe {
-        LocalFree(encrypted.pbData as *mut c_void);
-    }
-    let mut stored = DPAPI_SESSION_PREFIX.to_vec();
-    stored.extend(encrypted_bytes);
-    Ok(stored)
-}
-
-#[cfg(windows)]
-fn unprotect_session_payload(payload: &[u8]) -> Result<Vec<u8>, String> {
-    use std::{ffi::c_void, ptr};
-    use windows_sys::Win32::{
-        Foundation::LocalFree,
-        Security::Cryptography::{
-            CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
-        },
-    };
-
-    if !payload.starts_with(DPAPI_SESSION_PREFIX) {
-        return Ok(payload.to_vec());
-    }
-    let encrypted = &payload[DPAPI_SESSION_PREFIX.len()..];
-    let mut input = CRYPT_INTEGER_BLOB {
-        cbData: encrypted.len().try_into().map_err(to_message)?,
-        pbData: encrypted.as_ptr() as *mut u8,
-    };
-    let mut decrypted = CRYPT_INTEGER_BLOB {
-        cbData: 0,
-        pbData: ptr::null_mut(),
-    };
-    let unprotected = unsafe {
-        CryptUnprotectData(
-            &mut input,
-            ptr::null_mut(),
-            ptr::null(),
-            ptr::null::<c_void>(),
-            ptr::null(),
-            CRYPTPROTECT_UI_FORBIDDEN,
-            &mut decrypted,
-        )
-    };
-    if unprotected == 0 {
-        return Err("无法使用 Windows DPAPI 解密教务会话。".into());
-    }
-    let decrypted_bytes =
-        unsafe { std::slice::from_raw_parts(decrypted.pbData, decrypted.cbData as usize).to_vec() };
-    unsafe {
-        LocalFree(decrypted.pbData as *mut c_void);
-    }
-    Ok(decrypted_bytes)
-}
-
 fn ensure_success(response: &Value) -> Result<(), String> {
     match response.get("code").and_then(Value::as_i64) {
         Some(200) => Ok(()),
@@ -793,7 +724,37 @@ fn to_message(error: impl std::fmt::Display) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::split_school_semester;
+    use std::path::Path;
+
+    use tauri::App;
+
+    use crate::platform::{Platform, PlatformService};
+
+    use super::{ensure_jwxt_session_supported, split_school_semester};
+
+    struct TestPlatform(Platform);
+
+    impl PlatformService for TestPlatform {
+        fn kind(&self) -> Platform {
+            self.0
+        }
+
+        fn configure_app(&self, _: &App) -> tauri::Result<()> {
+            Ok(())
+        }
+
+        fn protect_session_payload(&self, payload: &[u8]) -> Result<Vec<u8>, String> {
+            Ok(payload.to_vec())
+        }
+
+        fn unprotect_session_payload(&self, payload: &[u8]) -> Result<Vec<u8>, String> {
+            Ok(payload.to_vec())
+        }
+
+        fn restrict_session_file_permissions(&self, _: &Path) -> Result<(), String> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn splits_jwxt_school_semester() {
@@ -828,5 +789,25 @@ mod tests {
         assert_eq!(summary.total_rank.as_deref(), Some("12"));
         assert_eq!(summary.term_rank.as_deref(), Some("4"));
         assert_eq!(summary.cumulative_gpa.as_deref(), Some("3.82"));
+    }
+
+    #[test]
+    fn desktop_platform_allows_jwxt_session_flow() {
+        assert!(ensure_jwxt_session_supported(&TestPlatform(Platform::Linux)).is_ok());
+    }
+
+    #[test]
+    fn mobile_platform_rejects_jwxt_session_flow_with_a_user_message() {
+        let error = ensure_jwxt_session_supported(&TestPlatform(Platform::Android))
+            .expect_err("mobile must not reach the desktop JWXT flow");
+        assert!(error.contains("暂不支持教务登录与会话同步"));
+    }
+
+    #[test]
+    fn mobile_platform_rejects_file_session_storage() {
+        let error = TestPlatform(Platform::Ios)
+            .ensure_file_session_storage_supported()
+            .expect_err("mobile must not fall back to file sessions");
+        assert!(error.contains("不允许将教务会话写入文件"));
     }
 }

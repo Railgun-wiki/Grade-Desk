@@ -3,7 +3,7 @@
 ## Responsibility
 
 This module is responsible for:
-1. Ensuring the application window, title bars, layout bounds, dragging regions, and transparent visual effects adapt natively to macOS, Windows, and Linux.
+1. Ensuring the application window, title bars, layout bounds, dragging regions, and transparent visual effects adapt natively to macOS, Windows, and Linux through the Rust `platform` module.
 2. Maintaining a clean, uniform Apple-inspired UI design for all page contents (fonts, colors, cards, and buttons) across all operating systems.
 3. Defining and orchestrating automated GitHub Actions workflows for continuous integration (type checks, lints, formats, and build verification) and draft release publishing.
 
@@ -11,7 +11,7 @@ This module is responsible for:
 
 | Interface | Owner | Contract |
 |---|---|---|
-| `application_status` | Rust command (modified) | Includes the platform OS type (`macos`, `windows`, or `linux`) in the returned status payload. |
+| `application_status` | Rust command (modified) | Includes the platform OS type (`macos`, `windows`, `linux`, `android`, or `ios`) in the returned status payload. |
 | `.os-macos`, `.os-windows`, `.os-linux` | CSS classes | Applied to `document.body` to override window-level visual settings and layout geometry. |
 | `.github/workflows/ci.yml` | GitHub Actions | Automatically triggers on pushes and PRs to verify the Ubuntu/Linux build. |
 | `.github/workflows/release.yml` | GitHub Actions | Automatically triggers on version tags to build installers and compile production draft releases. |
@@ -28,6 +28,7 @@ This module does not own any student, credential, session, or grade database tab
 - Code signing (macOS/Windows certificates) is skipped by default in the basic workflow, as distribution is intended for manual side-loading or local builds. Secrets should be added in GitHub settings if signing is enabled in the future.
 - The platform metadata exposed by `application_status` contains only general operating system names and does not collect or transmit unique hardware, device, or user identifiers.
 - Linux supports the same local grade-management and JWXT/CAS authentication flows as macOS and Windows. Its WebKitGTK Cookie behavior remains subject to physical Linux desktop verification.
+- Android/iOS are capability-declared only: desktop window effects, JWXT multi-window login, and file-backed sessions remain disabled pending a separate mobile security design.
 
 ## Dependencies
 
