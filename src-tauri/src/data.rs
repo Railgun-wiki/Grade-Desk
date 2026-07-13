@@ -8,7 +8,7 @@ use std::{
 use tauri::{AppHandle, Manager};
 
 const DATABASE_FILE: &str = "grade-desk.db";
-const SCHEMA_VERSION: i32 = 2;
+const SCHEMA_VERSION: i32 = 3;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +35,60 @@ pub(crate) struct CourseAttempt {
     pub(crate) grade_point: Option<f64>,
     pub(crate) credit: f64,
     pub(crate) passed: bool,
+    pub(crate) term: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TermOption {
+    pub(crate) id: i64,
+    pub(crate) label: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TermTrend {
+    pub(crate) term: String,
+    pub(crate) gpa: Option<f64>,
+    pub(crate) earned_credits: f64,
+    pub(crate) course_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CourseContribution {
+    pub(crate) attempt_id: i64,
+    pub(crate) course_name: String,
+    pub(crate) course_code: String,
+    pub(crate) credit: f64,
+    pub(crate) grade_point: f64,
+    pub(crate) contribution: f64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ScoreDistributionBin {
+    pub(crate) label: String,
+    pub(crate) count: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AnalysisDataQuality {
+    pub(crate) numeric_count: i64,
+    pub(crate) grade_only_count: i64,
+    pub(crate) pass_fail_count: i64,
+    pub(crate) unavailable_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AnalysisOverview {
+    pub(crate) trends: Vec<TermTrend>,
+    pub(crate) contributions: Vec<CourseContribution>,
+    pub(crate) distribution: Vec<ScoreDistributionBin>,
+    pub(crate) data_quality: AnalysisDataQuality,
+    pub(crate) as_of: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -127,6 +181,21 @@ pub(crate) fn load_dashboard(app: &AppHandle) -> Result<Dashboard, String> {
 pub(crate) fn list_course_attempts(app: &AppHandle) -> Result<Vec<CourseAttempt>, String> {
     let connection = initialized_database(app)?;
     attempts_from(&connection).map_err(to_message)
+}
+
+pub(crate) fn list_terms(app: &AppHandle) -> Result<Vec<TermOption>, String> {
+    let connection = initialized_database(app)?;
+    let mut statement = connection.prepare(
+        "SELECT id, academic_year || ' 第' || semester || '学期' FROM terms WHERE profile_id = 1 ORDER BY academic_year DESC, semester DESC",
+    ).map_err(to_message)?;
+    let terms = statement.query_map([], |row| Ok(TermOption { id: row.get(0)?, label: row.get(1)? }))
+        .map_err(to_message)?.collect::<SqlResult<Vec<_>>>().map_err(to_message)?;
+    Ok(terms)
+}
+
+pub(crate) fn load_analysis_overview(app: &AppHandle) -> Result<AnalysisOverview, String> {
+    let connection = initialized_database(app)?;
+    analysis_overview_from(&connection).map_err(to_message)
 }
 
 pub(crate) fn get_course_detail(app: &AppHandle, attempt_id: i64) -> Result<CourseDetail, String> {
@@ -376,7 +445,9 @@ fn migrate(connection: &Connection) -> SqlResult<()> {
             detected_at TEXT NOT NULL,
             reviewed_at TEXT
         );
-        PRAGMA user_version = 2;
+        CREATE INDEX IF NOT EXISTS idx_course_attempts_term ON course_attempts(term_id);
+        CREATE INDEX IF NOT EXISTS idx_grade_snapshots_attempt ON grade_snapshots(attempt_id, id DESC);
+        PRAGMA user_version = 3;
         ",
     )?;
 
@@ -524,10 +595,12 @@ fn attempts_from(connection: &Connection) -> SqlResult<Vec<CourseAttempt>> {
     let mut statement = connection.prepare(
         "
         SELECT a.id, c.name, c.course_code, c.category, a.official_grade, a.numeric_score,
-               a.score_kind, a.grade_point, a.credit, a.passed
+               a.score_kind, a.grade_point, a.credit, a.passed,
+               t.academic_year || ' 第' || t.semester || '学期'
         FROM course_attempts a
         JOIN courses c ON c.id = a.course_id
-        ORDER BY c.course_code
+        JOIN terms t ON t.id = a.term_id
+        ORDER BY t.academic_year DESC, t.semester DESC, c.course_code
         ",
     )?;
     let rows = statement.query_map([], attempt_from_row)?;
@@ -583,7 +656,28 @@ fn attempt_from_row(row: &rusqlite::Row<'_>) -> SqlResult<CourseAttempt> {
         grade_point: row.get(7)?,
         credit: row.get(8)?,
         passed: row.get::<_, i64>(9)? == 1,
+        term: row.get(10).unwrap_or_else(|_| String::new()),
     })
+}
+
+fn analysis_overview_from(connection: &Connection) -> SqlResult<AnalysisOverview> {
+    let mut trend_statement = connection.prepare(
+        "SELECT t.academic_year || ' 第' || t.semester || '学期', SUM(CASE WHEN a.grade_point IS NOT NULL AND UPPER(TRIM(COALESCE(a.official_grade, ''))) NOT IN ('P', 'NP') THEN a.grade_point * a.credit ELSE 0 END) / NULLIF(SUM(CASE WHEN a.grade_point IS NOT NULL AND UPPER(TRIM(COALESCE(a.official_grade, ''))) NOT IN ('P', 'NP') THEN a.credit ELSE 0 END), 0), SUM(CASE WHEN a.passed = 1 THEN a.credit ELSE 0 END), COUNT(a.id) FROM terms t JOIN course_attempts a ON a.term_id = t.id WHERE t.profile_id = 1 GROUP BY t.id ORDER BY t.academic_year, t.semester",
+    )?;
+    let trends = trend_statement.query_map([], |row| Ok(TermTrend { term: row.get(0)?, gpa: row.get(1)?, earned_credits: row.get(2)?, course_count: row.get(3)? }))?.collect::<SqlResult<Vec<_>>>()?;
+    let overall_gpa: Option<f64> = connection.query_row("SELECT SUM(grade_point * credit) / NULLIF(SUM(credit), 0) FROM course_attempts WHERE grade_point IS NOT NULL AND UPPER(TRIM(COALESCE(official_grade, ''))) NOT IN ('P', 'NP')", [], |row| row.get(0))?;
+    let contributions = if let Some(gpa) = overall_gpa {
+        let mut statement = connection.prepare("SELECT a.id, c.name, c.course_code, a.credit, a.grade_point FROM course_attempts a JOIN courses c ON c.id = a.course_id WHERE a.grade_point IS NOT NULL AND UPPER(TRIM(COALESCE(a.official_grade, ''))) NOT IN ('P', 'NP') ORDER BY ABS(a.credit * (a.grade_point - ?1)) DESC, c.course_code")?;
+        let rows = statement.query_map(params![gpa], |row| { let credit: f64 = row.get(3)?; let grade_point: f64 = row.get(4)?; Ok(CourseContribution { attempt_id: row.get(0)?, course_name: row.get(1)?, course_code: row.get(2)?, credit, grade_point, contribution: credit * (grade_point - gpa) }) })?.collect::<SqlResult<Vec<_>>>()?;
+        rows
+    } else { Vec::new() };
+    let distribution = [("90–100", 90_i64, 101_i64), ("80–89", 80, 90), ("70–79", 70, 80), ("60–69", 60, 70), ("0–59", 0, 60)].into_iter().map(|(label, low, high)| {
+        let count = connection.query_row("SELECT COUNT(*) FROM course_attempts WHERE score_kind = 'official_numeric' AND numeric_score >= ?1 AND numeric_score < ?2", params![low, high], |row| row.get(0))?;
+        Ok(ScoreDistributionBin { label: label.to_owned(), count })
+    }).collect::<SqlResult<Vec<_>>>()?;
+    let (numeric_count, grade_only_count, pass_fail_count, unavailable_count) = connection.query_row("SELECT SUM(CASE WHEN score_kind = 'official_numeric' THEN 1 ELSE 0 END), SUM(CASE WHEN score_kind = 'official_grade' AND UPPER(TRIM(COALESCE(official_grade, ''))) NOT IN ('P', 'NP') THEN 1 ELSE 0 END), SUM(CASE WHEN UPPER(TRIM(COALESCE(official_grade, ''))) IN ('P', 'NP') THEN 1 ELSE 0 END), SUM(CASE WHEN score_kind IN ('derived', 'unavailable') THEN 1 ELSE 0 END) FROM course_attempts", [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))?;
+    let as_of = connection.query_row("SELECT COALESCE(MAX(finished_at), '') FROM sync_runs WHERE profile_id = 1 AND status = 'completed'", [], |row| row.get(0))?;
+    Ok(AnalysisOverview { trends, contributions, distribution, data_quality: AnalysisDataQuality { numeric_count, grade_only_count, pass_fail_count, unavailable_count }, as_of })
 }
 
 #[derive(Debug)]
@@ -621,6 +715,12 @@ fn archive_from(connection: &mut Connection) -> SqlResult<ArchiveResult> {
     )?;
     let sync_run_id = transaction.last_insert_rowid();
     let mut changes_detected = 0;
+    let has_baseline: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM grade_snapshots)", [], |row| row.get(0))?;
+    let incomplete_seed_baseline: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sync_runs WHERE source_version = 'seed-v1') AND (SELECT COUNT(*) FROM grade_snapshots) < ?1",
+        params![inputs.len() as i64],
+        |row| row.get(0),
+    )?;
 
     for input in &inputs {
         let (payload_hash, normalized_json) = snapshot_payload(input);
@@ -644,6 +744,12 @@ fn archive_from(connection: &mut Connection) -> SqlResult<ArchiveResult> {
                 )?;
                 changes_detected += 1;
             }
+        } else if has_baseline && !incomplete_seed_baseline {
+            transaction.execute(
+                "INSERT INTO grade_changes (attempt_id, before_snapshot_id, after_snapshot_id, change_type, detected_at) VALUES (?1, NULL, ?2, 'course_added', ?3)",
+                params![input.attempt_id, after_snapshot_id, finished_at],
+            )?;
+            changes_detected += 1;
         }
     }
     transaction.commit()?;
@@ -805,6 +911,7 @@ mod tests {
 
         let attempts = attempts_from(&connection).expect("load attempts");
         assert_eq!(attempts.len(), 5);
+        assert_eq!(attempts[0].term, "2025-2026 第1学期");
         let detail = course_detail_from(&connection, 1).expect("load course detail");
         assert_eq!(detail.components.len(), 3);
 
@@ -827,6 +934,28 @@ mod tests {
             1
         );
         assert_eq!(export_csv(&attempts).lines().count(), 6);
+    }
+
+    #[test]
+    fn analysis_and_archive_distinguish_terms_and_new_courses() {
+        let mut connection = Connection::open_in_memory().expect("open in-memory database");
+        migrate(&connection).expect("apply schema");
+        seed_demo_data(&mut connection).expect("seed data");
+        let baseline = archive_from(&mut connection).expect("complete seed baseline");
+        assert_eq!(baseline.changes_detected, 0);
+        connection.execute("INSERT INTO terms (id, profile_id, academic_year, semester, train_type) VALUES (2, 1, '2024-2025', 2, '本科')", []).expect("add earlier term");
+        connection.execute("INSERT INTO courses (id, profile_id, course_code, name, category) VALUES (5, 1, 'NEW101', '新增课程', '专业必修')", []).expect("add course");
+        connection.execute("INSERT INTO course_attempts (id, course_id, term_id, class_number, official_grade, numeric_score, score_kind, grade_point, credit, passed, recorded_at) VALUES (5, 5, 2, 'NEW101-01', 'A', 93, 'official_numeric', 4.0, 2.0, 1, '2026-07-13T00:00:00Z')", []).expect("add attempt");
+        let archive = archive_from(&mut connection).expect("archive new course");
+        assert_eq!(archive.changes_detected, 1);
+        assert_eq!(pending_changes_from(&connection).expect("changes")[0].change_type, "course_added");
+        let analysis = analysis_overview_from(&connection).expect("analysis");
+        assert_eq!(analysis.trends.len(), 2);
+        assert_eq!(analysis.distribution.iter().map(|bin| bin.count).sum::<i64>(), 3);
+        assert_eq!(analysis.data_quality.grade_only_count, 2);
+        let mut statement = connection.prepare("SELECT id, academic_year || ' 第' || semester || '学期' FROM terms WHERE profile_id = 1 ORDER BY academic_year DESC, semester DESC").expect("terms");
+        let terms = statement.query_map([], |row| Ok(TermOption { id: row.get(0)?, label: row.get(1)? })).expect("map terms").collect::<SqlResult<Vec<_>>>().expect("collect terms");
+        assert_eq!(terms[0].label, "2025-2026 第1学期");
     }
 
     #[test]

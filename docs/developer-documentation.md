@@ -121,6 +121,7 @@ graph TD
 - [应用外壳与基础配置](modules/app-shell.md) (`app-shell.md`): Tauri 2 窗口管理。
 - [成绩持久化仓库](modules/grade-repository.md) (`grade-repository.md`): SQLite 迁移、种子数据及数据库结构。
 - [成绩概览与主看板](modules/grade-dashboard.md) (`grade-dashboard.md`): 只读 UI 表格和绩点统计。
+- [本地成绩分析](modules/analysis.md) (`analysis.md`): 学期趋势、课程贡献与数值成绩分布。
 - [历史版本与归档流程](modules/archive-workflow.md) (`archive-workflow.md`): 本地快照、成绩变动追踪与数据导出。
 - [教务认证与数据抓取](modules/jwxt-session.md) (`jwxt-session.md`): 受控 CAS 登录与数据抓取设计。
 - [系统日志与诊断](modules/logging.md) (`logging.md`): Rust 端的结构化日志管理。

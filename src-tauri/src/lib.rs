@@ -3,8 +3,8 @@ mod jwxt;
 mod logging;
 
 use data::{
-    ArchiveResult, ChangeRecord, CourseAttempt, CourseDetail, Dashboard, ExportFormat,
-    ExportReceipt, SyncRun,
+    AnalysisOverview, ArchiveResult, ChangeRecord, CourseAttempt, CourseDetail, Dashboard,
+    ExportFormat, ExportReceipt, SyncRun, TermOption,
 };
 use serde::Serialize;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -43,6 +43,16 @@ fn get_dashboard(app: tauri::AppHandle) -> Result<Dashboard, String> {
 #[tauri::command]
 fn list_course_attempts(app: tauri::AppHandle) -> Result<Vec<CourseAttempt>, String> {
     data::list_course_attempts(&app)
+}
+
+#[tauri::command]
+fn list_terms(app: tauri::AppHandle) -> Result<Vec<TermOption>, String> {
+    data::list_terms(&app)
+}
+
+#[tauri::command]
+fn get_analysis_overview(app: tauri::AppHandle) -> Result<AnalysisOverview, String> {
+    data::load_analysis_overview(&app)
 }
 
 #[tauri::command]
@@ -150,6 +160,8 @@ pub fn run() {
             application_status,
             get_dashboard,
             list_course_attempts,
+            list_terms,
+            get_analysis_overview,
             get_course_detail,
             archive_current_data,
             list_sync_runs,

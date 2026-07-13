@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-Create immutable local grade snapshots, compare each snapshot to the preceding one, present pending grade changes for review, export the local transcript, and delete the local database only after explicit user confirmation.
+Create immutable local grade snapshots, compare each snapshot to the preceding one, present pending new-course and grade-update changes for review, export the local transcript, and delete the local database only after explicit user confirmation.
 
 ## Public interfaces
 
@@ -23,7 +23,7 @@ The module owns derived history data in `sync_runs`, `grade_snapshots`, and `gra
 - “Create snapshot” is offline-only in this release; it does not contact CAS, JWXT, WebVPN, or any external service.
 - Exports use a fixed application-data `exports/` destination. The frontend cannot supply paths or invoke general filesystem operations.
 - Deletion is initiated only after a native confirmation in the UI. It removes only Grade Desk's database files, never school-side data.
-- Snapshots remain append-only. A review only marks a change record; it never edits historical payloads.
+- Snapshots remain append-only. A review only marks a change record; it never edits historical payloads. The first snapshot is a baseline and creates no notification; subsequent new local course records are `course_added`, while changed score payloads are `grade_updated`.
 
 ## Dependencies
 
