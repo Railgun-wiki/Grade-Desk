@@ -9,7 +9,7 @@ Render the local, read-only grade experience: cumulative overview, searchable tr
 | Interface | Owner | Contract |
 |---|---|---|
 | `get_dashboard` | Rust repository command | Supplies all-course GPA, professional-course GPA, earned credits, and the local archive timestamp. |
-| `list_course_attempts` | Rust repository command | Supplies the flattened, read-only transcript list. |
+| `list_course_attempts` / `list_terms` | Rust repository command | Supplies flattened attempts with their term and descending term options for transcript paging. |
 | `get_course_detail(attemptId)` | Rust repository command | Supplies one attempt, its academic term, class number, and available score components. |
 | Overview / transcript navigation | React state | Changes only the displayed local view; it does not mutate data. |
 
@@ -53,6 +53,6 @@ CI=true pnpm tauri build --debug
 ## Known limitations
 
 - Course detail only exposes the available seeded components; unavailable components are stated plainly.
-- Search is client-side and only covers the loaded transcript fields.
+- Transcript search and filters are client-side and apply only to the selected academic term. Filters cover category, pass state, score source, and GPA range.
 - On very short windows, overview cards retain their viewport layout and only the course-list card becomes scrollable.
-- Analysis, snapshot comparison, exports, real synchronization, and account connection remain out of scope for this module.
+- Snapshot comparison, exports, real synchronization, and account connection remain out of scope for this module. The analysis page owns derived analysis presentation.

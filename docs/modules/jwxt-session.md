@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-Provide a controlled WebView flow for CAS/JWXT sign-in on macOS, Windows 11, and supported Linux desktop environments. It reads the authenticated JWXT WebView cookies, persists them in the app-data directory, verifies a saved session independently of grade availability, and exposes user-selected official JWXT grade-query methods.
+Provide a controlled WebView flow for CAS/JWXT sign-in on macOS, Windows 11, and supported Linux desktop environments. It reads the authenticated JWXT WebView cookies, persists them in the app-data directory, verifies a saved session independently of grade availability, and exposes user-selected official JWXT grade-query methods. Android and iOS explicitly reject this desktop-only flow.
 
 ## Public interfaces
 
@@ -37,12 +37,14 @@ The app-data directory owns the serialized JWXT Cookie set in `jwxt-session.json
 - Numeric-score probing writes a lifecycle diagnostic before local validation, then records each pre-request, request, response, persistence, or no-result failure without including course identifiers, grades, scores, Cookies, or response bodies.
 - The graduation-course endpoint receives the official course number (`scoCourseNumber`/local `course_code`), matching the reference implementation; it does not receive the teaching-class number.
 - macOS, Windows 11, and Linux are supported. Login-window creation and Cookie reads stay asynchronous; this avoids WebView2 deadlocks on Windows and prevents the synchronous WebKitGTK Cookie API from blocking the UI thread on Linux.
+- `PlatformService` is the only source of platform policy. Mobile targets reject login windows and file-backed sessions before any Cookie read, network request, or plaintext fallback.
 
 ## Dependencies
 
 - Tauri 2 WebviewWindow Cookie APIs on macOS, Windows 11 (WebView2 Runtime), and Linux (WebKitGTK).
 - Windows: DPAPI through `windows-sys` for current-user session encryption.
 - Standard-library app-data file I/O with restrictive Unix file permissions.
+- `platform` module for platform capabilities, window support guards, DPAPI dispatch, and session-file policy.
 - `reqwest` with Rustls for the official HTTPS pull/list requests.
 
 ## Verification
@@ -63,3 +65,4 @@ CI=true pnpm tauri build --debug
 - Per-term list queries use the same `score-check/list` endpoint and share its server-side policy. The separate `score-check/getSortByYear` statistics endpoint does not provide importable course records and is not exposed as a synchronization method.
 - `getSortByYear` is under the same JWXT score-check service family; its current evaluation-policy behavior must be treated as server-controlled and can differ from the grade list.
 - Exact session expiry and multi-factor behavior remain under the host's CAS policy.
+- Android/iOS JWXT login is intentionally unavailable until a separately authorized system-browser authentication and Keychain/Keystore design is delivered.

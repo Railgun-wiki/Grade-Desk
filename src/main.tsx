@@ -31,6 +31,7 @@ type CourseAttempt = {
   gradePoint: number | null;
   credit: number;
   passed: boolean;
+  term: string;
 };
 
 type ScoreComponent = { name: string; score: number | null; weight: number | null };
@@ -45,16 +46,21 @@ type GradeQueryResult = { courseCount: number; trainType: string; method: GradeQ
 type SessionVerification = { trainType: string };
 type NumericProbeResult = { numericScore: number };
 type RankSummary = { trainType: string; totalRank: string | null; termRank: string | null; totalStudents: string | null; cumulativeGpa: string | null; termGpa: string | null; earnedCredits: string | null };
+type TermOption = { id: number; label: string };
+type TermTrend = { term: string; gpa: number | null; earnedCredits: number; courseCount: number };
+type CourseContribution = { attemptId: number; courseName: string; courseCode: string; credit: number; gradePoint: number; contribution: number };
+type ScoreDistributionBin = { label: string; count: number };
+type AnalysisOverview = { trends: TermTrend[]; contributions: CourseContribution[]; distribution: ScoreDistributionBin[]; dataQuality: { numericCount: number; gradeOnlyCount: number; passFailCount: number; unavailableCount: number }; asOf: string };
 
 const previewDashboard: Dashboard = {
   profileName: "示例同学", currentTerm: "2025-2026 第1学期", allGpa: 3.78, professionalGpa: 3.74,
   earnedCredits: 13, courseCount: 4, lastSyncedAt: "2026-07-12T00:00:00Z",
 };
 const previewAttempts: CourseAttempt[] = [
-  { id: 1, courseName: "程序设计基础", courseCode: "CS101", category: "专业必修", officialGrade: "A", numericScore: null, scoreKind: "official_grade", gradePoint: 4, credit: 4, passed: true },
-  { id: 2, courseName: "高等数学", courseCode: "MA101", category: "公共必修", officialGrade: "A-", numericScore: 91, scoreKind: "official_numeric", gradePoint: 3.7, credit: 5, passed: true },
-  { id: 3, courseName: "学术英语", courseCode: "EN101", category: "公共必修", officialGrade: "B+", numericScore: null, scoreKind: "official_grade", gradePoint: 3.3, credit: 2, passed: true },
-  { id: 4, courseName: "科学与社会", courseCode: "GE101", category: "通识选修", officialGrade: "A", numericScore: 95, scoreKind: "official_numeric", gradePoint: 4, credit: 2, passed: true },
+  { id: 1, courseName: "程序设计基础", courseCode: "CS101", category: "专业必修", officialGrade: "A", numericScore: null, scoreKind: "official_grade", gradePoint: 4, credit: 4, passed: true, term: "2025-2026 第1学期" },
+  { id: 2, courseName: "高等数学", courseCode: "MA101", category: "公共必修", officialGrade: "A-", numericScore: 91, scoreKind: "official_numeric", gradePoint: 3.7, credit: 5, passed: true, term: "2025-2026 第1学期" },
+  { id: 3, courseName: "学术英语", courseCode: "EN101", category: "公共必修", officialGrade: "B+", numericScore: null, scoreKind: "official_grade", gradePoint: 3.3, credit: 2, passed: true, term: "2025-2026 第1学期" },
+  { id: 4, courseName: "科学与社会", courseCode: "GE101", category: "通识选修", officialGrade: "A", numericScore: 95, scoreKind: "official_numeric", gradePoint: 4, credit: 2, passed: true, term: "2025-2026 第1学期" },
 ];
 
 function gradeLabel(course: CourseAttempt) {
@@ -70,10 +76,18 @@ function App() {
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard>(previewDashboard);
   const [attempts, setAttempts] = useState<CourseAttempt[]>(previewAttempts);
-  const [activeView, setActiveView] = useState<"overview" | "transcript" | "archive" | "connection">("overview");
+  const [activeView, setActiveView] = useState<"overview" | "transcript" | "analysis" | "archive" | "connection">("overview");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<CourseDetail | null>(null);
   const [query, setQuery] = useState("");
+  const [terms, setTerms] = useState<TermOption[]>([]);
+  const [selectedTerm, setSelectedTerm] = useState("");
+  const [category, setCategory] = useState("all");
+  const [passed, setPassed] = useState("all");
+  const [scoreKind, setScoreKind] = useState("all");
+  const [minimumPoint, setMinimumPoint] = useState("");
+  const [maximumPoint, setMaximumPoint] = useState("");
+  const [analysis, setAnalysis] = useState<AnalysisOverview | null>(null);
   const [syncRuns, setSyncRuns] = useState<SyncRun[]>([]);
   const [changes, setChanges] = useState<ChangeRecord[]>([]);
   const [notice, setNotice] = useState("");
@@ -93,8 +107,8 @@ function App() {
   useEffect(() => { void invoke<JwxtStatus>("jwxt_status").then(setJwxt).catch(() => undefined); }, []);
 
   const refreshGrades = () => {
-    void Promise.all([invoke<Dashboard>("get_dashboard"), invoke<CourseAttempt[]>("list_course_attempts")])
-      .then(([nextDashboard, nextAttempts]) => { setDashboard(nextDashboard); setAttempts(nextAttempts); })
+    void Promise.all([invoke<Dashboard>("get_dashboard"), invoke<CourseAttempt[]>("list_course_attempts"), invoke<TermOption[]>("list_terms")])
+      .then(([nextDashboard, nextAttempts, nextTerms]) => { setDashboard(nextDashboard); setAttempts(nextAttempts); setTerms(nextTerms); setSelectedTerm((current) => current && nextTerms.some((term) => term.label === current) ? current : nextTerms[0]?.label ?? ""); })
       .catch(() => undefined);
   };
 
@@ -147,6 +161,7 @@ function App() {
   const queryRankSummary = async () => { try { const result = await invoke<RankSummary>("query_jwxt_rank_summary"); setRankSummary(result); setJwxt({ connected: true, message: "排名统计已更新。" }); } catch (error) { setJwxt({ connected: true, message: String(error) }); } };
 
   useEffect(() => { refreshGrades(); }, []);
+  useEffect(() => { if (activeView === "analysis") void invoke<AnalysisOverview>("get_analysis_overview").then(setAnalysis).catch(() => setAnalysis(null)); }, [activeView, attempts]);
 
   useEffect(() => {
     if (selectedId === null) { setDetail(null); return; }
@@ -163,7 +178,11 @@ function App() {
   }, [attempts, dashboard.currentTerm, selectedId]);
 
   const filteredAttempts = useMemo(() => attempts.filter((item) =>
-    `${item.courseName}${item.courseCode}${item.category}`.toLowerCase().includes(query.trim().toLowerCase())), [attempts, query]);
+    item.term === selectedTerm && `${item.courseName}${item.courseCode}${item.category}`.toLowerCase().includes(query.trim().toLowerCase()) &&
+    (category === "all" || item.category === category) && (passed === "all" || String(item.passed) === passed) &&
+    (scoreKind === "all" || item.scoreKind === scoreKind) &&
+    (minimumPoint === "" || (item.gradePoint !== null && item.gradePoint >= Number(minimumPoint))) &&
+    (maximumPoint === "" || (item.gradePoint !== null && item.gradePoint <= Number(maximumPoint)))), [attempts, selectedTerm, query, category, passed, scoreKind, minimumPoint, maximumPoint]);
 
   return (
     <div className="app-shell">
@@ -174,7 +193,7 @@ function App() {
         <div className="nav-items-group">
           <button className={activeView === "overview" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("overview")} type="button">概览</button>
           <button className={activeView === "transcript" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("transcript")} type="button">成绩单</button>
-          <button className="nav-item" type="button" disabled>分析 <span>即将推出</span></button>
+          <button className={activeView === "analysis" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("analysis")} type="button">分析</button>
           <button className={activeView === "archive" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("archive")} type="button">归档</button>
           <button className={activeView === "connection" ? "nav-item active" : "nav-item"} onClick={() => setActiveView("connection")} type="button">连接教务</button>
         </div>
@@ -186,7 +205,8 @@ function App() {
       <main className={`content ${activeView === "overview" ? "overview-content" : ""}`} id="main-content">
         {notice && <p className="notice" role="status">{notice}</p>}
         {activeView === "overview" && <Overview dashboard={dashboard} attempts={attempts} onTranscript={() => setActiveView("transcript")} />}
-        {activeView === "transcript" && <Transcript attempts={filteredAttempts} query={query} onQuery={setQuery} onSelect={setSelectedId} />}
+        {activeView === "transcript" && <Transcript attempts={filteredAttempts} query={query} onQuery={setQuery} onSelect={setSelectedId} terms={terms} selectedTerm={selectedTerm} onTerm={setSelectedTerm} category={category} onCategory={setCategory} passed={passed} onPassed={setPassed} scoreKind={scoreKind} onScoreKind={setScoreKind} minimumPoint={minimumPoint} onMinimumPoint={setMinimumPoint} maximumPoint={maximumPoint} onMaximumPoint={setMaximumPoint} />}
+        {activeView === "analysis" && <Analysis analysis={analysis} onSelect={setSelectedId} />}
         {activeView === "archive" && <Archive runs={syncRuns} changes={changes} onReview={() => void reviewChanges()} onExport={exportData} onClear={() => void clearData()} onCreateArchive={() => void createArchive()} />}
         {activeView === "connection" && <Connection status={jwxt} method={queryMethod} rankSummary={rankSummary} onMethod={setQueryMethod} onLogin={() => void startJwxtLogin()} onVerify={() => void verifyJwxt()} onSync={() => void syncJwxt()} onRank={() => void queryRankSummary()} />}
       </main>
@@ -217,12 +237,25 @@ function Overview({ dashboard, attempts, onTranscript }: { dashboard: Dashboard;
 
 function Metric({ label, value, note }: { label: string; value: string; note: string }) { return <article className="metric"><p>{label}</p><strong>{value}</strong><span>{note}</span></article>; }
 
-function Transcript({ attempts, query, onQuery, onSelect }: { attempts: CourseAttempt[]; query: string; onQuery: (value: string) => void; onSelect: (id: number) => void }) {
-  return <section aria-labelledby="transcript-title"><div className="page-heading"><div><p className="eyebrow">成绩单</p><h1 id="transcript-title">所有课程</h1></div><label className="search"><span>搜索</span><input value={query} onChange={(event) => onQuery(event.target.value)} placeholder="课程名称或代码" /></label></div>
+function Transcript({ attempts, query, onQuery, onSelect, terms, selectedTerm, onTerm, category, onCategory, passed, onPassed, scoreKind, onScoreKind, minimumPoint, onMinimumPoint, maximumPoint, onMaximumPoint }: { attempts: CourseAttempt[]; query: string; onQuery: (value: string) => void; onSelect: (id: number) => void; terms: TermOption[]; selectedTerm: string; onTerm: (value: string) => void; category: string; onCategory: (value: string) => void; passed: string; onPassed: (value: string) => void; scoreKind: string; onScoreKind: (value: string) => void; minimumPoint: string; onMinimumPoint: (value: string) => void; maximumPoint: string; onMaximumPoint: (value: string) => void }) {
+  const categories = [...new Set(attempts.map((attempt) => attempt.category))];
+  return <section aria-labelledby="transcript-title"><div className="page-heading"><div><p className="eyebrow">成绩单</p><h1 id="transcript-title">{selectedTerm || "所有课程"}</h1></div><label className="search"><span>搜索</span><input value={query} onChange={(event) => onQuery(event.target.value)} placeholder="课程名称或代码" /></label></div>
+    <div className="filter-bar" aria-label="成绩单筛选"><label>学期<select value={selectedTerm} onChange={(event) => onTerm(event.target.value)}>{terms.map((term) => <option key={term.id} value={term.label}>{term.label}</option>)}</select></label><label>类别<select value={category} onChange={(event) => onCategory(event.target.value)}><option value="all">全部</option>{categories.map((value) => <option key={value} value={value}>{value}</option>)}</select></label><label>状态<select value={passed} onChange={(event) => onPassed(event.target.value)}><option value="all">全部</option><option value="true">已通过</option><option value="false">未通过</option></select></label><label>成绩来源<select value={scoreKind} onChange={(event) => onScoreKind(event.target.value)}><option value="all">全部</option><option value="official_numeric">教务数值</option><option value="official_grade">官方等级</option><option value="derived">本地计算</option><option value="unavailable">未提供</option></select></label><label>最低绩点<input inputMode="decimal" min="0" max="4" value={minimumPoint} onChange={(event) => onMinimumPoint(event.target.value)} placeholder="0.0" /></label><label>最高绩点<input inputMode="decimal" min="0" max="4" value={maximumPoint} onChange={(event) => onMaximumPoint(event.target.value)} placeholder="4.0" /></label></div>
     <div className="table-card"><div className="table-header" aria-hidden="true"><span>课程</span><span>类别</span><span>学分</span><span>成绩</span><span>绩点</span></div>
       {attempts.map((course) => <button key={course.id} className="course-row" onClick={() => onSelect(course.id)} type="button"><span><strong>{course.courseName}</strong><small>{course.courseCode} · {scoreSource(course)}</small></span><span>{course.category}</span><span>{course.credit.toFixed(1)}</span><span><b>{gradeLabel(course)}</b><small>{course.passed ? "已通过" : "未通过"}</small></span><span>{course.gradePoint?.toFixed(1) ?? "—"}</span></button>)}
       {attempts.length === 0 && <p className="empty-state">没有匹配的课程。</p>}
     </div>
+  </section>;
+}
+
+function Analysis({ analysis, onSelect }: { analysis: AnalysisOverview | null; onSelect: (id: number) => void }) {
+  if (!analysis) return <section><div className="page-heading"><div><p className="eyebrow">分析</p><h1>本地学业分析</h1></div></div><p className="empty-state">正在读取本地分析数据。</p></section>;
+  const maxDistribution = Math.max(1, ...analysis.distribution.map((item) => item.count));
+  return <section aria-labelledby="analysis-title"><div className="page-heading"><div><p className="eyebrow">分析</p><h1 id="analysis-title">本地学业分析</h1><p className="muted">仅基于本机档案{analysis.asOf ? ` · 数据截至 ${analysis.asOf.slice(0, 10)}` : ""}</p></div></div>
+    <div className="analysis-grid"><section className="section-card"><p className="eyebrow">学期趋势</p><h2>GPA 与已获学分</h2>{analysis.trends.length ? <div className="trend-list">{analysis.trends.map((trend) => <div key={trend.term}><span>{trend.term}</span><strong>{trend.gpa === null ? "GPA 不可计算" : `GPA ${trend.gpa.toFixed(2)}`}</strong><small>{trend.earnedCredits.toFixed(1)} 已获学分 · {trend.courseCount} 门课程</small></div>)}</div> : <p className="muted">暂无可按学期比较的数据。</p>}</section>
+      <section className="section-card"><p className="eyebrow">教务数值</p><h2>数值成绩分布</h2><div className="distribution">{analysis.distribution.map((bin) => <div key={bin.label}><span>{bin.label}</span><i><b style={{ width: `${bin.count / maxDistribution * 100}%` }} /></i><strong>{bin.count}</strong></div>)}</div><p className="muted">只统计已验证的教务数值，不转换官方等级。</p></section></div>
+    <section className="table-card contribution-card"><div className="section-heading"><div><p className="eyebrow">课程贡献</p><h2>相对累计 GPA 的影响</h2></div></div>{analysis.contributions.map((course) => <button className="contribution-row" type="button" key={course.attemptId} onClick={() => onSelect(course.attemptId)}><span><strong>{course.courseName}</strong><small>{course.courseCode} · {course.credit.toFixed(1)} 学分 · {course.gradePoint.toFixed(1)} 绩点</small></span><b className={course.contribution >= 0 ? "positive" : "negative"}>{course.contribution >= 0 ? "+" : ""}{course.contribution.toFixed(2)}</b></button>)}{analysis.contributions.length === 0 && <p className="empty-state">没有足够的绩点记录用于贡献分析。</p>}</section>
+    <p className="analysis-note">数据覆盖：{analysis.dataQuality.numericCount} 门教务数值、{analysis.dataQuality.gradeOnlyCount} 门官方等级、{analysis.dataQuality.passFailCount} 门 P/NP、{analysis.dataQuality.unavailableCount} 门未提供或本地计算。P/NP 不计入 GPA。</p>
   </section>;
 }
 
@@ -237,7 +270,7 @@ function CoursePanel({ detail, onClose, onProbe }: { detail: CourseDetail; onClo
 function Archive({ runs, changes, onReview, onExport, onClear, onCreateArchive }: { runs: SyncRun[]; changes: ChangeRecord[]; onReview: () => void; onExport: (format: "json" | "csv") => void; onClear: () => void; onCreateArchive: () => void }) {
   return <section aria-labelledby="archive-title"><div className="page-heading" data-tauri-drag-region><div><p className="eyebrow">归档</p><h1 id="archive-title">本地历史</h1></div><div className="archive-actions"><button className="primary-button" type="button" onClick={onCreateArchive}>创建快照</button><button className="secondary-button" type="button" onClick={() => onExport("csv")}>导出 CSV</button><button className="secondary-button" type="button" onClick={() => onExport("json")}>导出 JSON</button></div></div>
     <div className="archive-grid"><section className="section-card"><div className="section-heading"><div><p className="eyebrow">待审阅</p><h2>检测到的变更</h2></div>{changes.length > 0 && <button className="text-button" type="button" onClick={onReview}>全部标记已审阅</button>}</div>
-      {changes.length > 0 ? <div className="change-list">{changes.map((change) => <div key={change.id}><span><strong>{change.courseName}</strong><small>{change.courseCode} · {change.changeType}</small></span><time>{change.detectedAt}</time></div>)}</div> : <p className="muted padded">当前没有待审阅的成绩变更。</p>}
+      {changes.length > 0 ? <div className="change-list">{changes.map((change) => <div key={change.id}><span><strong>{change.courseName}</strong><small>{change.courseCode} · {change.changeType === "course_added" ? "新增出分课程" : "已有成绩更新"}</small></span><time>{change.detectedAt}</time></div>)}</div> : <p className="muted padded">当前没有待审阅的新出分或成绩更新。</p>}
     </section><section className="section-card"><p className="eyebrow">隐私</p><h2>管理本机数据</h2><p className="archive-copy">导出文件会保存到应用数据目录。清除只影响此设备，不会修改教务系统。</p><button className="danger-button" type="button" onClick={onClear}>清除本地档案</button></section></div>
     <section className="table-card archive-table"><div className="section-heading"><div><p className="eyebrow">快照</p><h2>归档记录</h2></div></div>{runs.length > 0 ? runs.map((run) => <div className="run-row" key={run.id}><span><strong>本地快照 #{run.id}</strong><small>{run.sourceVersion}</small></span><span>{run.snapshotCount} 门课程</span><span>{run.changeCount} 项变更</span><time>{run.finishedAt}</time></div>) : <p className="empty-state">还没有本地快照。</p>}</section>
   </section>;

@@ -70,6 +70,7 @@ graph TD
 
 - **macOS / Windows 11 / Linux**：支持本地成绩管理和受控 JWXT/CAS 登录。Windows 会话文件使用当前用户的 DPAPI 加密；Unix 平台的会话文件权限设为 `0600`。
 - **Linux**：为兼容不同桌面合成器，原生窗口不使用透明效果。登录依赖 WebKitGTK，首次发布前必须在实际 Linux 桌面环境验证 CAS 跳转与 Cookie 持久化。
+- **Android / iOS（预留）**：当前不发布移动端，也不支持 JWXT 登录或文件会话。Android 开发需要 Android Studio、SDK/NDK、`JAVA_HOME`、`ANDROID_HOME`、`NDK_HOME` 及 Rust Android targets；iOS 只能在 macOS 上使用完整 Xcode、CocoaPods、Rust iOS targets 和 Apple Developer 签名。正式接入时必须改用系统浏览器认证和 Keystore/Keychain。
 
 ### 开发指令
 
@@ -121,7 +122,9 @@ graph TD
 - [应用外壳与基础配置](modules/app-shell.md) (`app-shell.md`): Tauri 2 窗口管理。
 - [成绩持久化仓库](modules/grade-repository.md) (`grade-repository.md`): SQLite 迁移、种子数据及数据库结构。
 - [成绩概览与主看板](modules/grade-dashboard.md) (`grade-dashboard.md`): 只读 UI 表格和绩点统计。
+- [本地成绩分析](modules/analysis.md) (`analysis.md`): 学期趋势、课程贡献与数值成绩分布。
 - [历史版本与归档流程](modules/archive-workflow.md) (`archive-workflow.md`): 本地快照、成绩变动追踪与数据导出。
 - [教务认证与数据抓取](modules/jwxt-session.md) (`jwxt-session.md`): 受控 CAS 登录与数据抓取设计。
 - [系统日志与诊断](modules/logging.md) (`logging.md`): Rust 端的结构化日志管理。
 - [跨平台兼容与自动化流水线](modules/ci-release-compatibility.md) (`ci-release-compatibility.md`): 样式覆盖细节及 GitHub Actions CI/Release 机制。
+- [平台服务](modules/platform.md) (`platform.md`): `PlatformService` trait、能力矩阵、原生窗口与会话安全策略。
